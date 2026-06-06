@@ -411,8 +411,8 @@ class GameCanvasController {
       x: 180,
       y: this.height / 2,
       targetY: this.height / 2,
-      radius: 26,
-      targetRadius: 26,
+      radius: 78,
+      targetRadius: 78,
       massScale: 1.0,
       wobbleSpeed: 0.005,
       tail: []
@@ -521,11 +521,17 @@ class GameCanvasController {
     if (STATE.hasLifeline && quality === 'best') color = 'rgba(46, 204, 113, ALPHA)'; // bold green
     
     for (let i = 0; i < count; i++) {
+      const spikes = 5 + Math.floor(Math.random() * 4); // 5 to 8 protein lobes
+      const spikeHeights = Array.from({length: spikes}, () => 0.35 + Math.random() * 0.65);
+      
       list.push({
         t: i / count, // position offset along Bezier [0-1]
-        size: quality === 'best' ? 4 + Math.random() * 3 : 3 + Math.random() * 2,
+        size: quality === 'best' ? 6 + Math.random() * 3 : 5 + Math.random() * 2, // slightly larger for protein shapes
         color: color,
-        pulseOffset: Math.random() * Math.PI * 2
+        pulseOffset: Math.random() * Math.PI * 2,
+        spikes: spikes,
+        spikeHeights: spikeHeights,
+        rotSpeed: (0.015 + Math.random() * 0.02) * (Math.random() > 0.5 ? 1 : -1)
       });
     }
     return list;
@@ -599,8 +605,8 @@ class GameCanvasController {
     if (STATE.paths && STATE.paths.length > 0) {
       STATE.paths.forEach(p => {
         p.particles.forEach(nut => {
-          // Nutrients flow backward along curves
-          nut.t -= 0.003 * STATE.currentSpeed;
+          // Nutrients flow backward along curves (slowed down by an additional 50%)
+          nut.t -= 0.00075 * STATE.currentSpeed;
           if (nut.t < 0) {
             nut.t = 1.0;
           }
@@ -655,10 +661,45 @@ class GameCanvasController {
         // Draw flowing nutrient particles along the path
         p.particles.forEach(nut => {
           const pt = this.getBezierPoint(p, nut.t);
-          const pulse = Math.sin(Date.now() * 0.005 + nut.pulseOffset) * 2;
+          const pulse = Math.sin(Date.now() * 0.005 + nut.pulseOffset) * 1.5;
           
-          this.ctx.beginPath();
-          this.ctx.arc(pt.x, pt.y, nut.size + pulse, 0, Math.PI * 2);
+          // Rotate proteins over time
+          const rot = Date.now() * nut.rotSpeed * 0.08;
+          const radBase = nut.size + pulse;
+          
+          // Helper to draw spiky protein folding lines with interlocking indentations
+          const drawProteinPath = (scale) => {
+            this.ctx.beginPath();
+            const angleStep = (Math.PI * 2) / nut.spikes;
+            for (let i = 0; i < nut.spikes; i++) {
+              const angle = i * angleStep + rot;
+              const r = radBase * (1.0 + nut.spikeHeights[i] * 0.6) * scale;
+              const px = pt.x + Math.cos(angle) * r;
+              const py = pt.y + Math.sin(angle) * r;
+              
+              if (i === 0) {
+                this.ctx.moveTo(px, py);
+              } else {
+                const prevAngle = (i - 0.5) * angleStep + rot;
+                const socketRad = radBase * 0.45 * scale; // Inner interlocking indentation slot
+                const cx = pt.x + Math.cos(prevAngle) * socketRad;
+                const cy = pt.y + Math.sin(prevAngle) * socketRad;
+                this.ctx.quadraticCurveTo(cx, cy, px, py);
+              }
+            }
+            
+            // Close path with final interlocking indentation
+            const prevAngle = (nut.spikes - 0.5) * angleStep + rot;
+            const socketRad = radBase * 0.45 * scale;
+            const cx = pt.x + Math.cos(prevAngle) * socketRad;
+            const cy = pt.y + Math.sin(prevAngle) * socketRad;
+            const startAngle = rot;
+            const startR = radBase * (1.0 + nut.spikeHeights[0] * 0.6) * scale;
+            const startX = pt.x + Math.cos(startAngle) * startR;
+            const startY = pt.y + Math.sin(startAngle) * startR;
+            this.ctx.quadraticCurveTo(cx, cy, startX, startY);
+            this.ctx.closePath();
+          };
           
           // Modify particle opacity based on location along path (fades in near fork, out near player)
           const fadeAlpha = Math.min(1.0, nut.t * 3) * Math.min(1.0, (1 - nut.t) * 3);
@@ -675,14 +716,15 @@ class GameCanvasController {
             }
           }
           
+          // Draw main protein body
+          drawProteinPath(1.0);
           this.ctx.fillStyle = colorString.replace('ALPHA', fadeAlpha.toFixed(2));
           this.ctx.fill();
           
           // Add extra outer radial glow for the best path to aid readability
           if (p.quality === 'best' || (STATE.hasLifeline && p.quality === 'best')) {
-            this.ctx.beginPath();
-            this.ctx.arc(pt.x, pt.y, (nut.size + pulse) * 2.5, 0, Math.PI * 2);
-            this.ctx.fillStyle = `rgba(46, 204, 113, ${fadeAlpha * 0.15})`;
+            drawProteinPath(2.2);
+            this.ctx.fillStyle = `rgba(46, 204, 113, ${fadeAlpha * 0.12})`;
             this.ctx.fill();
           }
         });
@@ -692,8 +734,8 @@ class GameCanvasController {
     // 3. Draw Splashed particles
     this.particles.forEach(p => p.draw(this.ctx));
     
-    // Set scaling factor for start screen (5x scale) vs gameplay (1x scale)
-    const sizeScale = STATE.isPlaying ? 1.0 : 5.0;
+    // Set scaling factor for start screen (3x scale of the new 78px size) vs gameplay (1x scale)
+    const sizeScale = STATE.isPlaying ? 1.0 : 3.0;
 
     // Calculate dynamic base color hue shifting over time (bio-luminescent rainbow)
     const hueBase = (Date.now() * 0.015) % 360;
@@ -756,20 +798,20 @@ class GameCanvasController {
       this.ctx.closePath();
     };
     
-    // Layered Dynamic Color Neon Outlines
+    // Layered Dynamic Color Neon Outlines (Enhanced Glow)
     buildMembranePath();
-    this.ctx.strokeStyle = `hsla(${hueBase}, 100%, 50%, 0.12)`;
-    this.ctx.lineWidth = 32 * sizeScale;
+    this.ctx.strokeStyle = `hsla(${hueBase}, 100%, 50%, 0.25)`;
+    this.ctx.lineWidth = 42 * sizeScale;
     this.ctx.stroke();
     
     buildMembranePath();
-    this.ctx.strokeStyle = `hsla(${(hueBase + 120) % 360}, 100%, 50%, 0.22)`;
-    this.ctx.lineWidth = 18 * sizeScale;
+    this.ctx.strokeStyle = `hsla(${(hueBase + 120) % 360}, 100%, 50%, 0.45)`;
+    this.ctx.lineWidth = 26 * sizeScale;
     this.ctx.stroke();
     
     buildMembranePath();
-    this.ctx.strokeStyle = `hsla(${(hueBase + 240) % 360}, 100%, 60%, 0.58)`;
-    this.ctx.lineWidth = 7 * sizeScale;
+    this.ctx.strokeStyle = `hsla(${(hueBase + 240) % 360}, 100%, 60%, 0.85)`;
+    this.ctx.lineWidth = 12 * sizeScale;
     this.ctx.stroke();
     
     // Volumetric 3D Color-Shifting Gradient Filling
