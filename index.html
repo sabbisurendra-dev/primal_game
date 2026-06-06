@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>PRIMAL — Phase 1 Evolution Demo</title>
+  <meta name="description" content="A mysterious single-cell survival and evolution simulator. Shape your path, secure your spark, and divide.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Near-death suffocating vignette -->
+  <div id="vignette" class="vignette-overlay"></div>
+
+  <!-- Ambient visual background texture -->
+  <div class="noise-overlay"></div>
+
+  <!-- Game Container -->
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- UI Overlay Layer -->
+    <div id="ui-layer" class="hidden">
+      <!-- Top Header -->
+      <header class="game-header">
+        <div class="logo">PRIMAL</div>
+        <div class="chapter-tracker">
+          <span class="chapter-label">CHAPTER:</span>
+          <span id="current-chapter-name" class="chapter-val">THE PRIMORDIAL SPARK</span>
+        </div>
+        <div class="progress-container">
+          <div id="progress-bar" class="progress-bar"></div>
+        </div>
+      </header>
+
+      <!-- Left Side HUD: Organic Stats -->
+      <aside class="stats-panel">
+        <div class="stat-group survival">
+          <div class="stat-header">
+            <span class="stat-title">SURVIVAL INSTINCT</span>
+            <span id="stat-survival-val" class="stat-value">100%</span>
+          </div>
+          <div class="bar-outer">
+            <div id="bar-survival" class="bar-inner" style="width: 100%;"></div>
+          </div>
+        </div>
+
+        <div class="stat-group health">
+          <div class="stat-header">
+            <span class="stat-title">HEALTH STATE</span>
+            <span id="stat-health-val" class="stat-value">50%</span>
+          </div>
+          <div class="bar-outer">
+            <div id="bar-health" class="bar-inner" style="width: 50%;"></div>
+          </div>
+        </div>
+
+        <div class="stat-group reproduction">
+          <div class="stat-header">
+            <span class="stat-title">REPRODUCTIVE CAPACITY</span>
+            <span id="stat-repro-val" class="stat-value">10%</span>
+          </div>
+          <div class="bar-outer">
+            <div id="bar-repro" class="bar-inner" style="width: 10%;"></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Top-Center Narrative Text (Scientific Evolution Log) -->
+      <main class="narrative-panel">
+        <div id="narrative-text" class="narrative-content">
+          You drift in the cold, abyssal broth. A spark of instinct wakes. You are primitive, nameless, and vulnerable. Find warmth. Avoid the acid.
+        </div>
+        <div id="threat-indicator" class="threat-alert hidden">
+          <span class="pulse-red">⚠️ WARNING: ENVIRONMENTAL DISTURBANCE DETECTED</span>
+        </div>
+      </main>
+
+      <!-- Bottom Right / Center Choice Buttons -->
+      <nav class="choices-panel">
+        <button id="btn-up" class="btn-choice" aria-label="Branch Up" data-choice="up">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path fill="currentColor" d="M12 4l-8 8h6v8h4v-8h6z"/>
+          </svg>
+          <span class="btn-label">BRANCH UP</span>
+        </button>
+
+        <button id="btn-forward" class="btn-choice" aria-label="Branch Forward" data-choice="forward">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path fill="currentColor" d="M12 4l8 8h-6v8h-4v-8H4z" style="transform: rotate(90deg); transform-origin: 12px 12px;"/>
+          </svg>
+          <span class="btn-label">FORWARD</span>
+        </button>
+
+        <button id="btn-down" class="btn-choice" aria-label="Branch Down" data-choice="down">
+          <svg viewBox="0 0 24 24" width="24" height="24">
+            <path fill="currentColor" d="M12 20l8-8h-6V4h-4v8H4z"/>
+          </svg>
+          <span class="btn-label">BRANCH DOWN</span>
+        </button>
+      </nav>
+
+      <!-- Tweaker panel for developer adjustments (Hidden by default, toggleable via '/' key) -->
+      <div id="dev-tweaks" class="dev-panel hidden">
+        <h3>DESIGNER ENGINE TWEAKS</h3>
+        <label>Survival Inst. Weight: <input type="range" id="tweak-survival" min="0" max="2" step="0.1" value="1.0"><span id="tweak-survival-lbl">1.0</span></label>
+        <label>Health Weight: <input type="range" id="tweak-health" min="0" max="2" step="0.1" value="1.0"><span id="tweak-health-lbl">1.0</span></label>
+        <label>Repro Weight: <input type="range" id="tweak-repro" min="0" max="2" step="0.1" value="1.0"><span id="tweak-repro-lbl">1.0</span></label>
+        <label>Flow Speed: <input type="range" id="tweak-speed" min="1" max="10" step="0.5" value="3.5"><span id="tweak-speed-lbl">3.5</span></label>
+        <button id="btn-close-tweaks">Close [ESC]</button>
+      </div>
+    </div>
+
+    <!-- Screen Modals -->
+    <!-- 1. Start Screen -->
+    <div id="modal-start" class="modal">
+      <div class="modal-content text-center">
+        <h1 class="logo-large glitch-title">PRIMAL</h1>
+        <p class="subtitle">A Mysterious Evolution Journey</p>
+        <div class="divider"></div>
+        <p class="modal-story">
+          "Wake up.<br>You are nothing. Yet you are the seed of everything.<br>
+          In the shadows of the mysterious sea, the spark of life is struck."
+        </p>
+        <p class="modal-cta-main">READY. CLICK OR PRESS SPACEBAR TO START.</p>
+        <button id="btn-start" class="btn-primary">START JOURNEY</button>
+        <div class="hotkey-hint">Allow Audio to enable soundtrack.</div>
+      </div>
+    </div>
+
+    <!-- 2. Chapter Transition Screen -->
+    <div id="modal-chapter" class="modal hidden">
+      <div class="modal-content">
+        <h2 id="chapter-title" class="chapter-header">CHAPTER COMPLETED</h2>
+        <div class="divider"></div>
+        <p id="chapter-summary" class="chapter-summary-text">
+          Summary of your cellular progress.
+        </p>
+        <div class="chapter-choices">
+          <button id="btn-chapter-continue" class="btn-primary">CONTINUE JOURNEY</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Loop / Ending Screen -->
+    <div id="modal-end" class="modal hidden">
+      <div class="modal-content text-center">
+        <h2 class="success-title">THE CIRCLE OF LIFE</h2>
+        <p class="subtitle">Phase 1 Complete</p>
+        <div class="divider"></div>
+        <p class="modal-story">
+          Through hunger, tide, and hazard, you have endured.<br>
+          Your membrane expands. Your nucleus vibrates. You begin to divide.<br><br>
+          One cell becomes two. Two becomes many.<br>
+          The seed of tomorrow is planted in the deep.
+        </p>
+        <div class="ending-quote">
+          "There is grandeur in this view of life..." — Charles Darwin
+        </div>
+        <button id="btn-loop-restart" class="btn-primary">RESTART THE CYCLE</button>
+        <div class="credits">Developed for Primal MVP. Click to start the loop with hope.</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
