@@ -14,7 +14,7 @@ window.STATE_CONTROLLER = STATE_CONTROLLER;
 
 function init() {
   const config = {
-    type: Phaser.AUTO,
+    type: Phaser.WEBGL,
     width: window.innerWidth,
     height: window.innerHeight,
     parent: 'game-container',
