@@ -131,7 +131,7 @@ export const STATE_CONTROLLER = {
     
     this.updateHUD();
     const scene = getGameScene();
-    if (scene) scene.generatePaths();
+    if (scene && scene.player) scene.generatePaths();
     
     document.getElementById('modal-start').classList.add('hidden');
     document.getElementById('ui-layer').classList.remove('hidden');
@@ -163,7 +163,7 @@ export const STATE_CONTROLLER = {
     document.getElementById('threat-indicator').classList.remove('hidden');
     audio.setTempo(330);
     const scene = getGameScene();
-    if (scene) scene.generatePaths();
+    if (scene && scene.player) scene.generatePaths();
   },
   
   deactivateThreatWarning() {
@@ -262,7 +262,7 @@ export const STATE_CONTROLLER = {
       const textIndex = STATE.narrativeIndex % currentChapterDeck.length;
       this.setNarrative(currentChapterDeck[textIndex]);
       const scene = getGameScene();
-      if (scene) scene.generatePaths();
+      if (scene && scene.player) scene.generatePaths();
     }
   },
   
@@ -341,7 +341,7 @@ export const STATE_CONTROLLER = {
     
     STATE.isPlaying = true;
     const scene = getGameScene();
-    if (scene) scene.generatePaths();
+    if (scene && scene.player) scene.generatePaths();
     this.resetForkTimer();
     this.triggerThreatLoop();
   },
