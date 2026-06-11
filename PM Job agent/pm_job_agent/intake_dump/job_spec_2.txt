@@ -1,0 +1,18 @@
+Company: AutoDrive Technologies
+Role: Lead Hardware Systems Product Manager
+Location: Munich, Germany
+Salary: €90,000 - €100,000
+
+About the Role:
+We are seeking a Lead Hardware Systems Product Manager to oversee the physical sensor integration and supply chain for our next-generation autonomous driving vehicle suites.
+
+Key Responsibilities:
+- Lead the end-to-end product lifecycle of LiDAR and radar sensor housing assemblies.
+- Negotiate with Tier 1 automotive hardware suppliers in Europe and Asia.
+- Coordinate with compliance and manufacturing teams on factory tooling schedules.
+
+Requirements:
+- 10+ years of hardware engineering or automotive hardware product management experience.
+- Deep knowledge of mechanical engineering principles, sensor calibration, and optical alignment.
+- Experience with international supply chains, contract manufacturing, and factory operations.
+- Fluency in German is required.

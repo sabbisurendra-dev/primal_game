@@ -1,0 +1,20 @@
+Company: FinTech Flow
+Role: Senior Technical Product Manager
+Location: San Francisco, CA (Hybrid / Remote options available)
+Salary Range: $140,000 - $170,000 base + equity
+
+About the Role:
+We are looking for a Senior Technical Product Manager to lead development of our Core APIs and Integration Platform. In this role, you will work closely with engineering teams and enterprise customers to define product requirements, manage the API lifecycle, and drive developer adoption.
+
+Responsibilities:
+- Define product roadmap and strategy for our core API and developer platform.
+- Collaborate with engineering on architecture design and API specifications (REST/GraphQL).
+- Work with Sales, Customer Success, and enterprise clients to define requirements.
+- Use analytics and SQL/Tableau to track API performance, latencies, and developer metrics.
+- Drive Agile sprint ceremonies, write detailed user stories and product requirement documents (PRDs).
+
+Requirements:
+- 4+ years of Product Management experience.
+- Technical background, B.S./M.S. in Computer Science or equivalent technical expertise.
+- Hands-on experience with API Design, REST, System Architecture, and SQL.
+- Strong communication and roadmap alignment skills.

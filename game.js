@@ -55,8 +55,76 @@ class AudioController {
     this.masterVolume.connect(this.ctx.destination);
     
     this.isPlaying = true;
+  }
+  
+  startAmbientAndHeartbeat() {
     this.startAmbient();
     this.startHeartbeat();
+  }
+  
+  playIntroSwell() {
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    const now = this.ctx.currentTime;
+    
+    // Sweep oscillator from 70Hz to 1100Hz over 2.8 seconds (spacey cosmic fusion)
+    const osc = this.ctx.createOscillator();
+    const gainNode = this.ctx.createGain();
+    
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(70, now);
+    osc.frequency.exponentialRampToValueAtTime(1100, now + 2.8);
+    
+    // Lowpass filter sweep to make it sound spacey and vibrant
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(80, now);
+    filter.frequency.exponentialRampToValueAtTime(2600, now + 2.8);
+    
+    gainNode.gain.setValueAtTime(0.01, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.24, now + 2.4);
+    gainNode.gain.linearRampToValueAtTime(0.001, now + 3.0);
+    
+    osc.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(this.ctx.destination); // bypass global master/lowpass to avoid overlap
+    
+    osc.start(now);
+    osc.stop(now + 3.0);
+  }
+  
+  playAwakeningBoom() {
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    const now = this.ctx.currentTime;
+    
+    // Sub-bass impact boom (frozen shell shattering)
+    const osc = this.ctx.createOscillator();
+    const gainNode = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(90, now);
+    osc.frequency.exponentialRampToValueAtTime(30, now + 1.0);
+    
+    gainNode.gain.setValueAtTime(0.45, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+    
+    osc.connect(gainNode);
+    gainNode.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 1.05);
+    
+    // Play a high-pitched crystalline shatter chime
+    const oscChime = this.ctx.createOscillator();
+    const gainChime = this.ctx.createGain();
+    oscChime.type = 'triangle';
+    oscChime.frequency.setValueAtTime(1400, now);
+    oscChime.frequency.exponentialRampToValueAtTime(650, now + 0.65);
+    
+    gainChime.gain.setValueAtTime(0.18, now);
+    gainChime.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+    
+    oscChime.connect(gainChime);
+    gainChime.connect(this.ctx.destination);
+    oscChime.start(now);
+    oscChime.stop(now + 0.7);
   }
   
   startAmbient() {
@@ -293,9 +361,13 @@ const STATE = {
   hasLifeline: false,
   
   // Mechanics
+  isCoverScreen: true, // Dormant frozen cover screen state
   isPlaying: false,
+  isIntro: false,
+  introStartTime: 0,
+  hasTriggeredBoom: false,
   isTransitioning: false,
-  forkTimer: 5.0, // seconds until auto-fork selection
+  forkTimer: 3.0, // seconds until auto-fork selection
   
   // Paths
   paths: [], // 3 paths (Up, Forward, Down)
@@ -439,6 +511,93 @@ class GameCanvasController {
     }
   }
   
+  initIntroParticles() {
+    this.introParticles = [];
+    const colors = [0, 60, 120, 180, 240, 300]; // Rainbow hues (vibrant big bang theme)
+    for (let i = 0; i < 280; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 10 + Math.random() * 260;
+      const speed = (0.015 + Math.random() * 0.03) * (Math.random() > 0.5 ? 1 : -1);
+      this.introParticles.push({
+        x: Math.cos(angle) * distance,
+        y: Math.sin(angle) * distance * (0.6 + Math.random() * 0.4),
+        z: (Math.random() - 0.5) * 150,
+        hue: colors[i % colors.length],
+        speed: speed,
+        size: 1.5 + Math.random() * 4.5
+      });
+    }
+    
+    // Initialize frozen ice crust shards to shatter during awakening
+    this.awakeningIceShards = [];
+    const shardCount = 35;
+    for (let i = 0; i < shardCount; i++) {
+      const angle = (i / shardCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.15;
+      const radius = 65 + Math.random() * 20; // surrounding the forming cell membrane
+      
+      // Sharp ice polygon shapes
+      const points = [];
+      const numPoints = 3 + Math.floor(Math.random() * 2); // 3 or 4 vertices
+      for (let j = 0; j < numPoints; j++) {
+        const ptAngle = (j / numPoints) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+        const ptRad = 6 + Math.random() * 14;
+        points.push({
+          x: Math.cos(ptAngle) * ptRad,
+          y: Math.sin(ptAngle) * ptRad
+        });
+      }
+      
+      this.awakeningIceShards.push({
+        angle: angle,
+        baseRadius: radius,
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        points: points,
+        rot: Math.random() * Math.PI * 2,
+        rotSpeed: 0,
+        exploded: false,
+        alpha: 1.0
+      });
+    }
+    
+    this.awakeningSparks = [];
+  }
+  
+  spawnAwakeningExplosion() {
+    const tx = Math.max(120, Math.min(this.width * 0.2, 220));
+    const ty = this.height / 2;
+    
+    // Shatter ice shards
+    if (this.awakeningIceShards) {
+      this.awakeningIceShards.forEach(s => {
+        s.exploded = true;
+        const speed = 7 + Math.random() * 15;
+        s.vx = Math.cos(s.angle) * speed;
+        s.vy = Math.sin(s.angle) * speed;
+        s.rotSpeed = (Math.random() - 0.5) * 0.4;
+      });
+    }
+    
+    // Blast 150 fiery, high-energy vitality sparks outwards (survival instinct)
+    this.awakeningSparks = [];
+    for (let i = 0; i < 150; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 3 + Math.random() * 20;
+      this.awakeningSparks.push({
+        x: tx,
+        y: ty,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        size: 2.0 + Math.random() * 6.0,
+        hue: 12 + Math.random() * 38, // gold / orange / fiery crimson range
+        life: 1.0,
+        decay: 0.015 + Math.random() * 0.025
+      });
+    }
+  }
+  
   resize() {
     this.width = window.innerWidth;
     this.height = window.innerHeight;
@@ -570,6 +729,86 @@ class GameCanvasController {
   }
   
   update() {
+    if (STATE.isCoverScreen) {
+      this.currents.forEach(c => c.update(this.width, this.height, 0.05));
+      return;
+    }
+    
+    if (STATE.isIntro) {
+      const elapsed = Date.now() - STATE.introStartTime;
+      const progress = Math.min(1.0, elapsed / 3000);
+      
+      const cx = this.width / 2;
+      const cy = this.height / 2;
+      const tx = Math.max(120, Math.min(this.width * 0.2, 220));
+      const ty = this.height / 2;
+      
+      if (this.introParticles) {
+        this.introParticles.forEach(p => {
+          // 3D rotation around Y and Z axes
+          const cosAngle = Math.cos(p.speed);
+          const sinAngle = Math.sin(p.speed);
+          
+          const rx = p.x * cosAngle - p.z * sinAngle;
+          const rz = p.x * sinAngle + p.z * cosAngle;
+          p.x = rx;
+          p.z = rz;
+          
+          // Vortex physics: Burst -> Condensation -> Awakening Shockwave
+          let radiusScale = 1.0;
+          if (progress < 0.18) {
+            radiusScale = 0.5 + progress * 8.5; // Rapid outward burst
+          } else if (progress < 0.66) {
+            // Compress particles towards the forming cell location on the left
+            const compressProgress = (progress - 0.18) / (0.66 - 0.18);
+            radiusScale = Math.max(0.01, 2.0 * (1.0 - compressProgress));
+          } else {
+            // Burst outwards again (Awakening boom!)
+            const awakeProgress = (progress - 0.66) / 0.34;
+            radiusScale = 0.01 + Math.pow(awakeProgress, 1.8) * 18.0;
+          }
+          
+          // Interpolate center coordinates from center to left
+          const vx = cx + (tx - cx) * progress;
+          const vy = cy + (ty - cy) * progress;
+          
+          p.screenX = vx + p.x * radiusScale;
+          p.screenY = vy + p.y * radiusScale;
+        });
+      }
+      
+      // Update ice shards (crust around the frozen soul)
+      if (this.awakeningIceShards) {
+        this.awakeningIceShards.forEach(s => {
+          if (!s.exploded) {
+            s.x = tx + Math.cos(s.angle) * s.baseRadius;
+            s.y = ty + Math.sin(s.angle) * s.baseRadius;
+          } else {
+            s.x += s.vx;
+            s.y += s.vy;
+            s.rot += s.rotSpeed;
+            s.vx *= 0.95;
+            s.vy *= 0.95;
+            s.alpha -= 0.025;
+          }
+        });
+      }
+      
+      // Update fiery vitality sparks
+      if (this.awakeningSparks) {
+        this.awakeningSparks.forEach(s => {
+          s.x += s.vx;
+          s.y += s.vy;
+          s.vx *= 0.96;
+          s.vy *= 0.96;
+          s.life -= s.decay;
+        });
+        this.awakeningSparks = this.awakeningSparks.filter(s => s.life > 0);
+      }
+      
+      return; // Skip normal gameplay updates during intro
+    }
+
     // Set target X and Y coordinates (organism stays on the left)
     const targetX = Math.max(120, Math.min(this.width * 0.2, 220));
     const targetY = STATE.isPlaying ? this.player.targetY : this.height / 2;
@@ -620,6 +859,425 @@ class GameCanvasController {
   
   draw() {
     this.ctx.clearRect(0, 0, this.width, this.height);
+    
+    if (STATE.isCoverScreen) {
+      // Draw background currents in a frozen, brighter and more colorful blue shade
+      this.currents.forEach(c => {
+        this.ctx.beginPath();
+        this.ctx.moveTo(c.x, c.y);
+        this.ctx.lineTo(c.x + c.length, c.y);
+        this.ctx.strokeStyle = 'rgba(0, 195, 255, 0.22)';
+        this.ctx.lineWidth = c.thickness + 0.5;
+        this.ctx.stroke();
+      });
+      
+      const tx = Math.max(120, Math.min(this.width * 0.2, 220));
+      const ty = this.height / 2;
+      
+      // Massive frozen ice crust vignette overlaying the entire screen (colorful abyssal glacier)
+      const frostGrad = this.ctx.createRadialGradient(tx, ty, this.width * 0.05, tx, ty, this.width * 0.95);
+      frostGrad.addColorStop(0, 'rgba(8, 25, 45, 0.25)');
+      frostGrad.addColorStop(0.5, 'rgba(12, 40, 70, 0.65)');
+      frostGrad.addColorStop(1, 'rgba(20, 55, 90, 0.92)');
+      this.ctx.fillStyle = frostGrad;
+      this.ctx.fillRect(0, 0, this.width, this.height);
+      
+      this.ctx.save();
+      this.ctx.translate(tx, ty);
+      
+      // Add glowing shadow for ice elements
+      this.ctx.shadowColor = 'rgba(0, 230, 255, 0.7)';
+      this.ctx.shadowBlur = 12;
+      
+      // Draw dormant, static frozen soul
+      this.ctx.beginPath();
+      const numPts = 16;
+      const radius = 78;
+      for (let i = 0; i < numPts; i++) {
+        const angle = (i / numPts) * Math.PI * 2;
+        // Tiny dormant shiver
+        const w = Math.sin(Date.now() * 0.0015 + angle * 2) * 0.7;
+        const r = radius + w;
+        const px = Math.cos(angle) * r;
+        const py = Math.sin(angle) * r;
+        if (i === 0) this.ctx.moveTo(px, py);
+        else this.ctx.lineTo(px, py);
+      }
+      this.ctx.closePath();
+      
+      // Frosted bright-blue cell body
+      const soulGrad = this.ctx.createRadialGradient(0, 0, 2, 0, 0, radius);
+      soulGrad.addColorStop(0, 'rgba(0, 225, 255, 0.75)');
+      soulGrad.addColorStop(0.5, 'rgba(0, 160, 255, 0.55)');
+      soulGrad.addColorStop(0.85, 'rgba(0, 90, 200, 0.35)');
+      soulGrad.addColorStop(1, 'rgba(0, 45, 120, 0.08)');
+      this.ctx.fillStyle = soulGrad;
+      this.ctx.fill();
+      
+      this.ctx.strokeStyle = 'rgba(0, 240, 255, 0.95)';
+      this.ctx.lineWidth = 3.0;
+      this.ctx.stroke();
+      
+      // Draw static ice shards surrounding the dormant cell
+      const shardCount = 35;
+      for (let i = 0; i < shardCount; i++) {
+        const angle = (i / shardCount) * Math.PI * 2;
+        const baseRadius = 65 + (i % 3 === 0 ? 20 : i % 3 === 1 ? 5 : 28);
+        
+        this.ctx.save();
+        this.ctx.translate(Math.cos(angle) * baseRadius, Math.sin(angle) * baseRadius);
+        this.ctx.rotate(angle + Math.PI / 2);
+        
+        this.ctx.beginPath();
+        // Sharp triangular shard
+        this.ctx.moveTo(0, -9);
+        this.ctx.lineTo(5, 7);
+        this.ctx.lineTo(-5, 7);
+        this.ctx.closePath();
+        
+        this.ctx.fillStyle = 'rgba(0, 185, 255, 0.45)';
+        this.ctx.fill();
+        this.ctx.strokeStyle = 'rgba(160, 245, 255, 0.85)';
+        this.ctx.lineWidth = 1.2;
+        this.ctx.stroke();
+        this.ctx.restore();
+      }
+      
+      // Ice fracture crack lines radiating from the cell (prominent and flashy)
+      this.ctx.shadowColor = 'rgba(0, 240, 255, 0.95)';
+      this.ctx.shadowBlur = 15;
+      this.ctx.strokeStyle = 'rgba(0, 235, 255, 0.88)';
+      this.ctx.lineWidth = 2.8;
+      for (let k = 0; k < 8; k++) {
+        const angle = (k / 8) * Math.PI * 2 + 0.25;
+        this.ctx.beginPath();
+        this.ctx.moveTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+        let curDist = radius;
+        let curAngle = angle;
+        for (let seg = 0; seg < 4; seg++) {
+          curDist += 35 + Math.random() * 25;
+          curAngle += (Math.random() - 0.5) * 0.45;
+          this.ctx.lineTo(Math.cos(curAngle) * curDist, Math.sin(curAngle) * curDist);
+        }
+        this.ctx.stroke();
+      }
+      
+      this.ctx.restore();
+      return; // Skip normal drawing when on cover screen
+    }
+    
+    let shakeX = 0;
+    let shakeY = 0;
+    if (STATE.isIntro) {
+      const elapsed = Date.now() - STATE.introStartTime;
+      if (elapsed >= 2000 && elapsed < 3000) {
+        const shakePct = 1.0 - ((elapsed - 2000) / 1000);
+        shakeX = (Math.random() - 0.5) * 16 * shakePct;
+        shakeY = (Math.random() - 0.5) * 16 * shakePct;
+      }
+    }
+    
+    if (STATE.isIntro) {
+      this.ctx.save();
+      
+      const elapsed = Date.now() - STATE.introStartTime;
+      const progress = Math.min(1.0, elapsed / 3000);
+      const tx = Math.max(120, Math.min(this.width * 0.2, 220));
+      const ty = this.height / 2;
+      const hueBase = (Date.now() * 0.015) % 360;
+      
+      // Heartbeat pulse scaling and extra shake in the final 1.0s (survival theme)
+      if (progress >= 0.66) {
+        const awakeProgress = (progress - 0.66) / 0.34;
+        
+        // Double heartbeat formula: thump-thump
+        let heartScale = 1.0;
+        const beatPhase = (awakeProgress * Math.PI * 4) % (Math.PI * 2);
+        if (beatPhase < Math.PI) {
+          heartScale = 1.0 + Math.sin(beatPhase) * 0.14 * Math.max(0, 1.0 - awakeProgress);
+        } else {
+          const subPhase = beatPhase - Math.PI;
+          heartScale = 1.0 + Math.sin(subPhase) * 0.07 * Math.max(0, 1.0 - awakeProgress);
+        }
+        
+        this.ctx.translate(tx, ty);
+        this.ctx.scale(heartScale, heartScale);
+        this.ctx.translate(-tx, -ty);
+      }
+      
+      // Apply screen shake
+      this.ctx.translate(shakeX, shakeY);
+      
+      // 1. Draw vignette (cold blue initially, then rapid heat blood-red surge at 2.0s)
+      if (progress < 0.66) {
+        // Subtle dark vignette
+        const darkGrad = this.ctx.createRadialGradient(tx, ty, this.width * 0.3, tx, ty, this.width * 0.9);
+        darkGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        darkGrad.addColorStop(1, 'rgba(0, 0, 0, 0.75)');
+        this.ctx.fillStyle = darkGrad;
+        this.ctx.fillRect(0, 0, this.width, this.height);
+      } else {
+        // Violent, pulsating crimson/orange survival vignette
+        const awakeProgress = (progress - 0.66) / 0.34;
+        const pulse = Math.sin(awakeProgress * Math.PI * 6) * 0.4 + 0.6;
+        const alpha = 0.75 * (1.0 - awakeProgress) * pulse;
+        const survivalGrad = this.ctx.createRadialGradient(tx, ty, this.width * 0.2, tx, ty, this.width * 0.95);
+        survivalGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        survivalGrad.addColorStop(0.5, `rgba(200, 15, 0, ${alpha * 0.35})`);
+        survivalGrad.addColorStop(1, `rgba(240, 25, 0, ${alpha * 0.95})`);
+        this.ctx.fillStyle = survivalGrad;
+        this.ctx.fillRect(0, 0, this.width, this.height);
+      }
+      
+      // 2. Draw swirling colorful-to-B&W vortex particles
+      if (this.introParticles) {
+        this.introParticles.forEach(p => {
+          let sat = 100;
+          let colorHue = p.hue;
+          let alpha = Math.max(0.1, 1.0 - progress * 0.2);
+          
+          if (progress < 0.66) {
+            // First 2 seconds: slowly desaturate down to B&W (monochromatic)
+            sat = Math.max(0, 100 * (1 - (progress / 0.66)));
+          } else {
+            // Last 1 second: IGNITE into fiery gold/crimson survival sparks
+            const awakeProgress = (progress - 0.66) / 0.34;
+            sat = 100;
+            colorHue = 12 + (p.hue % 38) + Math.sin(Date.now() * 0.02) * 5;
+            alpha = Math.max(0.1, (1.0 - awakeProgress) * 0.9);
+          }
+          
+          const size = p.size * (progress >= 0.66 ? 1.0 + (progress - 0.66) * 2.0 : 1.3 - progress * 0.65);
+          
+          this.ctx.beginPath();
+          this.ctx.arc(p.screenX, p.screenY, size, 0, Math.PI * 2);
+          this.ctx.fillStyle = `hsla(${colorHue}, ${sat}%, 55%, ${alpha})`;
+          this.ctx.fill();
+          
+          if (p.size > 3.0 && (sat > 10 || progress >= 0.66)) {
+            this.ctx.beginPath();
+            this.ctx.arc(p.screenX, p.screenY, size * 2.5, 0, Math.PI * 2);
+            this.ctx.fillStyle = `hsla(${colorHue}, ${sat}%, 50%, ${alpha * 0.15})`;
+            this.ctx.fill();
+          }
+        });
+      }
+      
+      // Big bang bright center white/cyan flash at start
+      if (progress < 0.14) {
+        const flashAlpha = 1.0 - (progress / 0.14);
+        const radius = Math.min(this.width, this.height) * 0.45 * (1 - flashAlpha);
+        
+        this.ctx.beginPath();
+        this.ctx.arc(this.width / 2, this.height / 2, radius, 0, Math.PI * 2);
+        this.ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha * 0.9})`;
+        this.ctx.fill();
+        
+        this.ctx.beginPath();
+        this.ctx.arc(this.width / 2, this.height / 2, radius * 1.5, 0, Math.PI * 2);
+        this.ctx.fillStyle = `rgba(0, 255, 204, ${flashAlpha * 0.3})`;
+        this.ctx.fill();
+      }
+      
+      // 3. Draw Frozen Soul (First 2.0 seconds is a frozen crystalline structure)
+      if (progress < 0.66) {
+        const frozenAlpha = progress / 0.66;
+        
+        // Draw the pale, frozen cell shell
+        this.ctx.save();
+        this.ctx.translate(tx, ty);
+        this.ctx.beginPath();
+        const numPts = 16;
+        const radius = 78 * frozenAlpha;
+        for (let i = 0; i < numPts; i++) {
+          const angle = (i / numPts) * Math.PI * 2;
+          const w = Math.sin(Date.now() * 0.01 + angle * 2) * 2; // slow shiver
+          const r = radius + w;
+          const px = Math.cos(angle) * r;
+          const py = Math.sin(angle) * r;
+          if (i === 0) this.ctx.moveTo(px, py);
+          else this.ctx.lineTo(px, py);
+        }
+        this.ctx.closePath();
+        this.ctx.fillStyle = `rgba(0, 220, 255, ${frozenAlpha * 0.55})`;
+        this.ctx.fill();
+        this.ctx.strokeStyle = `rgba(0, 240, 255, ${frozenAlpha * 0.9})`;
+        this.ctx.lineWidth = 2.5;
+        this.ctx.stroke();
+        
+        // Draw ice cracks around it (spreading slower via exponent 2.5)
+        const crackProgress = Math.pow(progress / 0.66, 2.5);
+        const crackRadius = 88 * crackProgress;
+        
+        this.ctx.shadowColor = 'rgba(0, 240, 255, 0.85)';
+        this.ctx.shadowBlur = 12;
+        this.ctx.strokeStyle = 'rgba(0, 235, 255, 0.9)';
+        this.ctx.lineWidth = 2.5;
+        
+        for (let k = 0; k < 6; k++) {
+          const angle = (k / 6) * Math.PI * 2;
+          this.ctx.beginPath();
+          this.ctx.moveTo(0, 0);
+          this.ctx.lineTo(Math.cos(angle) * crackRadius, Math.sin(angle) * crackRadius);
+          // Jagged branch
+          this.ctx.lineTo(Math.cos(angle + 0.3) * crackRadius * 1.35, Math.sin(angle + 0.3) * crackRadius * 1.35);
+          this.ctx.stroke();
+        }
+        
+        this.ctx.shadowBlur = 0; // reset shadow glow
+        this.ctx.restore();
+      }
+      
+      // 4. Last 1 second: Dynamic cell ignition (shattering ice, lightning, warm energy)
+      if (progress >= 0.66) {
+        const waveProgress = (progress - 0.66) / 0.34;
+        
+        // Ice Crust Shards Shatter & Fly Outward
+        if (this.awakeningIceShards) {
+          this.awakeningIceShards.forEach(s => {
+            if (s.alpha <= 0) return;
+            this.ctx.save();
+            this.ctx.translate(s.x, s.y);
+            this.ctx.rotate(s.rot);
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(s.points[0].x, s.points[0].y);
+            for (let i = 1; i < s.points.length; i++) {
+              this.ctx.lineTo(s.points[i].x, s.points[i].y);
+            }
+            this.ctx.closePath();
+            
+            // Shattered ice colors (fading neon cyan)
+            this.ctx.fillStyle = `rgba(150, 230, 255, ${0.9 * s.alpha})`;
+            this.ctx.fill();
+            this.ctx.strokeStyle = `rgba(255, 255, 255, ${0.95 * s.alpha})`;
+            this.ctx.lineWidth = 2.0;
+            this.ctx.stroke();
+            this.ctx.restore();
+          });
+        }
+        
+        // Fiery Vitality Sparks (Warm gold/crimson embers)
+        if (this.awakeningSparks) {
+          this.awakeningSparks.forEach(s => {
+            this.ctx.beginPath();
+            this.ctx.arc(s.x, s.y, s.size * (0.3 + s.life * 0.7), 0, Math.PI * 2);
+            this.ctx.fillStyle = `hsla(${s.hue}, 100%, 62%, ${s.life * 0.95})`;
+            this.ctx.fill();
+            
+            // Glowing corona around embers
+            this.ctx.beginPath();
+            this.ctx.arc(s.x, s.y, s.size * 2.8 * s.life, 0, Math.PI * 2);
+            this.ctx.fillStyle = `hsla(${s.hue}, 100%, 50%, ${s.life * 0.18})`;
+            this.ctx.fill();
+          });
+        }
+        
+        // Electric Synaptic Arcs (Brain/vitality sparking life)
+        for (let i = 0; i < 3; i++) {
+          if (Math.random() < 0.65) {
+            const arcPoints = 5;
+            const angle = Math.random() * Math.PI * 2;
+            const length = 70 + Math.random() * 260;
+            let curX = tx;
+            let curY = ty;
+            this.ctx.beginPath();
+            this.ctx.moveTo(curX, curY);
+            for (let j = 1; j <= arcPoints; j++) {
+              const segT = j / arcPoints;
+              const nextX = tx + Math.cos(angle) * length * segT + (Math.random() - 0.5) * 40;
+              const nextY = ty + Math.sin(angle) * length * segT + (Math.random() - 0.5) * 40;
+              this.ctx.lineTo(nextX, nextY);
+              curX = nextX;
+              curY = nextY;
+            }
+            this.ctx.strokeStyle = Math.random() > 0.5 ? 'rgba(0, 255, 220, 0.95)' : 'rgba(255, 10, 80, 0.95)';
+            this.ctx.lineWidth = 1.5 + Math.random() * 2.5;
+            this.ctx.stroke();
+          }
+        }
+        
+        // Shockwave 1: Crimson expanding plasma front
+        this.ctx.beginPath();
+        this.ctx.arc(tx, ty, 40 * waveProgress * 7.5, 0, Math.PI * 2);
+        this.ctx.strokeStyle = `rgba(255, 45, 0, ${0.9 * (1 - waveProgress)})`;
+        this.ctx.lineWidth = 6 * (1 - waveProgress) + 1.5;
+        this.ctx.stroke();
+        
+        // Shockwave 2: Neon Cyan expansion (ice-burst shock)
+        this.ctx.beginPath();
+        this.ctx.arc(tx, ty, 30 * waveProgress * 5.0, 0, Math.PI * 2);
+        this.ctx.strokeStyle = `rgba(0, 240, 255, ${0.95 * (1 - waveProgress)})`;
+        this.ctx.lineWidth = 9 * (1 - waveProgress) + 2;
+        this.ctx.stroke();
+        
+        // Specular fiery plasma core forming cell spark
+        const plasmaRad = 60 * (1.15 + Math.sin(Date.now() * 0.04) * 0.18) * waveProgress;
+        const plasmaGrad = this.ctx.createRadialGradient(tx, ty, 2, tx, ty, plasmaRad);
+        plasmaGrad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
+        plasmaGrad.addColorStop(0.3, `hsla(${(hueBase + 110) % 360}, 100%, 65%, 0.95)`);
+        plasmaGrad.addColorStop(0.65, `hsla(${hueBase}, 100%, 55%, 0.65)`);
+        plasmaGrad.addColorStop(1, 'rgba(138, 43, 226, 0.0)');
+        
+        this.ctx.beginPath();
+        this.ctx.arc(tx, ty, plasmaRad, 0, Math.PI * 2);
+        this.ctx.fillStyle = plasmaGrad;
+        this.ctx.fill();
+        
+        // Render Waking Organism with vibrant crimson/gold cilia trail
+        this.ctx.save();
+        this.ctx.translate(tx, ty);
+        
+        // Fast-flapping flagella (instinct to survive)
+        this.ctx.beginPath();
+        const trailLen = 9;
+        for (let i = 0; i < trailLen; i++) {
+          const tAngle = Math.PI + Math.sin(Date.now() * 0.07 + i * 0.45) * 0.45;
+          const tDist = (i + 1) * 15;
+          const trailX = Math.cos(tAngle) * tDist;
+          const trailY = Math.sin(tAngle) * tDist;
+          if (i === 0) this.ctx.moveTo(trailX, trailY);
+          else this.ctx.lineTo(trailX, trailY);
+        }
+        this.ctx.strokeStyle = `rgba(255, 50, 0, ${0.8 * waveProgress})`;
+        this.ctx.lineWidth = 7 * waveProgress;
+        this.ctx.lineCap = 'round';
+        this.ctx.stroke();
+        
+        // Glowing cell body membrane
+        this.ctx.beginPath();
+        const bodyPts = 16;
+        const bodyRadius = 78 * waveProgress;
+        for (let i = 0; i < bodyPts; i++) {
+          const angle = (i / bodyPts) * Math.PI * 2;
+          const w = Math.sin(Date.now() * 0.045 + angle * 4) * 6; // rapid heartbeat wobble
+          const r = bodyRadius + w;
+          const px = Math.cos(angle) * r;
+          const py = Math.sin(angle) * r;
+          if (i === 0) this.ctx.moveTo(px, py);
+          else this.ctx.lineTo(px, py);
+        }
+        this.ctx.closePath();
+        
+        const cellGrad = this.ctx.createRadialGradient(0, 0, 2, 0, 0, bodyRadius);
+        cellGrad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
+        cellGrad.addColorStop(0.35, 'rgba(255, 165, 0, 0.9)');
+        cellGrad.addColorStop(0.75, 'rgba(220, 20, 60, 0.75)');
+        cellGrad.addColorStop(1, 'rgba(120, 0, 50, 0.0)');
+        
+        this.ctx.fillStyle = cellGrad;
+        this.ctx.fill();
+        
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        this.ctx.lineWidth = 2.5;
+        this.ctx.stroke();
+        
+        this.ctx.restore();
+      }
+      
+      this.ctx.restore();
+      return; // Skip normal scene rendering during intro
+    }
     
     // 1. Draw Background Currents
     this.currents.forEach(c => c.draw(this.ctx));
@@ -925,7 +1583,7 @@ class GameCanvasController {
     
     // 7. Draw Visual Timer Circle around Player
     if (STATE.isPlaying && !STATE.isTransitioning) {
-      const timerPct = Math.max(0, STATE.forkTimer / 5.0);
+      const timerPct = Math.max(0, STATE.forkTimer / 3.0);
       this.ctx.beginPath();
       this.ctx.arc(this.player.x, this.player.y, baseRad + 14, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * timerPct));
       this.ctx.strokeStyle = STATE.isThreatWarning ? 'rgba(231, 76, 60, 0.55)' : 'rgba(255, 255, 255, 0.25)';
@@ -968,7 +1626,7 @@ const STATE_CONTROLLER = {
   },
   
   resetForkTimer() {
-    STATE.forkTimer = 5.0;
+    STATE.forkTimer = 3.0;
   },
   
   triggerThreatLoop() {
@@ -1224,6 +1882,23 @@ function init() {
   
   // Game Loop
   function loop() {
+    if (STATE.isIntro) {
+      const elapsed = Date.now() - STATE.introStartTime;
+      if (elapsed >= 2000 && !STATE.hasTriggeredBoom) {
+        STATE.hasTriggeredBoom = true;
+        audio.playAwakeningBoom();
+        if (renderer && typeof renderer.spawnAwakeningExplosion === 'function') {
+          renderer.spawnAwakeningExplosion();
+        }
+      }
+      if (elapsed >= 3000) {
+        STATE.isIntro = false;
+        STATE.hasTriggeredBoom = false;
+        document.getElementById('modal-start').classList.remove('hidden');
+        audio.startAmbientAndHeartbeat();
+      }
+    }
+    
     if (STATE.isPlaying) {
       // Tick fork timer countdown down
       if (!STATE.isTransitioning) {
@@ -1255,6 +1930,18 @@ function init() {
   
   // Bind input listeners
   bindInputEvents();
+  
+  // Cover screen awaken trigger to start intro cutscene
+  document.getElementById('modal-awaken').addEventListener('click', () => {
+    document.getElementById('modal-awaken').classList.add('hidden');
+    audio.init();
+    audio.playIntroSwell();
+    
+    STATE.isCoverScreen = false;
+    STATE.isIntro = true;
+    STATE.introStartTime = Date.now();
+    renderer.initIntroParticles();
+  });
   
   // Urgent 3-second countdown hook
   setupUrgentStartHook();
