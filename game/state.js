@@ -101,6 +101,18 @@ export const STATE = {
   generation: 1
 };
 
+// Helper to safely obtain the active Phaser GameScene instance
+function getGameScene() {
+  if (window.phaserGame && window.phaserGame.scene) {
+    try {
+      return window.phaserGame.scene.getScene('GameScene');
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
 // --- 4. GAME STATE CONTROLLER ---
 export const STATE_CONTROLLER = {
   startGame() {
@@ -118,7 +130,8 @@ export const STATE_CONTROLLER = {
     STATE.targetSpeed = CONFIG.flowSpeed;
     
     this.updateHUD();
-    if (window.renderer) window.renderer.generatePaths();
+    const scene = getGameScene();
+    if (scene) scene.generatePaths();
     
     document.getElementById('modal-start').classList.add('hidden');
     document.getElementById('ui-layer').classList.remove('hidden');
@@ -149,7 +162,8 @@ export const STATE_CONTROLLER = {
     STATE.isThreatWarning = true;
     document.getElementById('threat-indicator').classList.remove('hidden');
     audio.setTempo(330);
-    if (window.renderer) window.renderer.generatePaths();
+    const scene = getGameScene();
+    if (scene) scene.generatePaths();
   },
   
   deactivateThreatWarning() {
@@ -173,18 +187,20 @@ export const STATE_CONTROLLER = {
     const outcomeSpeed = CONFIG.flowSpeed * CONFIG.outcomes[path.quality].speedMultiplier;
     STATE.targetSpeed = outcomeSpeed * 2.2;
     
-    if (window.renderer) {
-      window.renderer.spawnChoiceSplash(window.renderer.player.x, window.renderer.player.y, path.quality);
-      window.renderer.player.targetY = path.endY;
+    const scene = getGameScene();
+    if (scene) {
+      scene.spawnChoiceSplash(scene.player.x, scene.player.y, path.quality);
+      scene.player.targetY = path.endY;
     }
     
     this.applyOutcome(path.quality);
     
     setTimeout(() => {
       STATE.targetSpeed = outcomeSpeed;
-      if (window.renderer) {
-        window.renderer.player.y = path.endY;
-        window.renderer.player.targetY = path.endY;
+      const sceneLater = getGameScene();
+      if (sceneLater) {
+        sceneLater.player.y = path.endY;
+        sceneLater.player.targetY = path.endY;
       }
       this.resolveStep();
       STATE.isTransitioning = false;
@@ -245,7 +261,8 @@ export const STATE_CONTROLLER = {
     } else {
       const textIndex = STATE.narrativeIndex % currentChapterDeck.length;
       this.setNarrative(currentChapterDeck[textIndex]);
-      if (window.renderer) window.renderer.generatePaths();
+      const scene = getGameScene();
+      if (scene) scene.generatePaths();
     }
   },
   
@@ -323,7 +340,8 @@ export const STATE_CONTROLLER = {
     }
     
     STATE.isPlaying = true;
-    if (window.renderer) window.renderer.generatePaths();
+    const scene = getGameScene();
+    if (scene) scene.generatePaths();
     this.resetForkTimer();
     this.triggerThreatLoop();
   },

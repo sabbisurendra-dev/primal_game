@@ -1,0 +1,18 @@
+{
+  "name": "primal-game",
+  "version": "1.0.0",
+  "description": "Primal - A Mysterious Evolution Journey built with Phaser 4",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "phaser": "^4.1.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
