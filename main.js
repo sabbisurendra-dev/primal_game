@@ -36,6 +36,7 @@ function init() {
     STATE.hasTriggeredBoom = false;
     document.getElementById('modal-start').classList.remove('hidden');
     audio.startAmbientAndHeartbeat();
+    game.scene.start('GameScene');
   });
 
   // Cover Screen click handler (Ignite the Spark)
@@ -59,12 +60,26 @@ function init() {
   setupDesignerTweaker();
   bindInputEvents();
   setupUrgentStartHook();
+  animateButtonParticles();
 }
 
 function bindInputEvents() {
-  document.getElementById('btn-up').addEventListener('click', () => STATE_CONTROLLER.choosePath(0));
-  document.getElementById('btn-forward').addEventListener('click', () => STATE_CONTROLLER.choosePath(1));
-  document.getElementById('btn-down').addEventListener('click', () => STATE_CONTROLLER.choosePath(2));
+  const btnUp = document.getElementById('btn-up');
+  const btnForward = document.getElementById('btn-forward');
+  const btnDown = document.getElementById('btn-down');
+
+  btnUp.addEventListener('click', () => STATE_CONTROLLER.choosePath(0));
+  btnForward.addEventListener('click', () => STATE_CONTROLLER.choosePath(1));
+  btnDown.addEventListener('click', () => STATE_CONTROLLER.choosePath(2));
+
+  btnUp.addEventListener('mouseenter', () => { STATE.hoveredPathIndex = 0; });
+  btnUp.addEventListener('mouseleave', () => { if (STATE.hoveredPathIndex === 0) STATE.hoveredPathIndex = null; });
+
+  btnForward.addEventListener('mouseenter', () => { STATE.hoveredPathIndex = 1; });
+  btnForward.addEventListener('mouseleave', () => { if (STATE.hoveredPathIndex === 1) STATE.hoveredPathIndex = null; });
+
+  btnDown.addEventListener('mouseenter', () => { STATE.hoveredPathIndex = 2; });
+  btnDown.addEventListener('mouseleave', () => { if (STATE.hoveredPathIndex === 2) STATE.hoveredPathIndex = null; });
 
   document.getElementById('btn-start').addEventListener('click', () => {
     STATE_CONTROLLER.startGame();
@@ -114,6 +129,97 @@ function bindInputEvents() {
       STATE_CONTROLLER.choosePath(1);
     }
   }, { passive: true });
+}
+
+const buttonParticleMap = new Map();
+
+function setupButtonParticles(canvas, quality) {
+  let count = 0;
+  let color = '#ffffff';
+  let speedMult = 1.0;
+  
+  if (quality === 'best') {
+    count = 14;
+    color = 'rgba(46, 204, 113, ALPHA)';
+    speedMult = 0.25;
+  } else if (quality === 'ok') {
+    count = 6;
+    color = 'rgba(255, 255, 255, ALPHA)';
+    speedMult = 0.5;
+  } else if (quality === 'worst') {
+    count = 2;
+    color = 'rgba(231, 76, 60, ALPHA)';
+    speedMult = 0.1;
+  }
+  
+  const rect = canvas.getBoundingClientRect();
+  const defaultSize = window.innerWidth <= 768 ? 80 : 96;
+  canvas.width = rect.width || defaultSize;
+  canvas.height = rect.height || defaultSize;
+  
+  const particles = [];
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * speedMult,
+      vy: (Math.random() - 0.5) * speedMult,
+      size: 1 + Math.random() * 2,
+      color: color
+    });
+  }
+  buttonParticleMap.set(canvas, { particles, color, quality });
+}
+
+export function updateButtonVisuals() {
+  const buttons = [
+    document.getElementById('btn-up'),
+    document.getElementById('btn-forward'),
+    document.getElementById('btn-down')
+  ];
+  if (!STATE.paths || STATE.paths.length < 3) return;
+  
+  buttons.forEach((btn, idx) => {
+    if (!btn) return;
+    const path = STATE.paths[idx];
+    if (!path) return;
+    btn.dataset.quality = path.quality;
+    
+    const canvas = btn.querySelector('.btn-particle-canvas');
+    if (canvas) {
+      setupButtonParticles(canvas, path.quality);
+    }
+  });
+}
+window.updateButtonVisuals = updateButtonVisuals;
+
+function animateButtonParticles() {
+  const canvases = document.querySelectorAll('.btn-particle-canvas');
+  canvases.forEach(canvas => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const data = buttonParticleMap.get(canvas);
+    if (!data) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    data.particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      
+      if (p.x < 0) p.x = canvas.width;
+      if (p.x > canvas.width) p.x = 0;
+      if (p.y < 0) p.y = canvas.height;
+      if (p.y > canvas.height) p.y = 0;
+      
+      ctx.fillStyle = p.color.replace('ALPHA', '0.45');
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  });
+  requestAnimationFrame(animateButtonParticles);
 }
 
 if (document.readyState === 'complete' || document.readyState === 'interactive') {

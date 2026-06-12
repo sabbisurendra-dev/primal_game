@@ -82,24 +82,33 @@
       <!-- Bottom Right / Center Choice Buttons -->
       <nav class="choices-panel">
         <button id="btn-up" class="btn-choice" aria-label="Branch Up" data-choice="up">
-          <svg viewBox="0 0 24 24" width="24" height="24">
-            <path fill="currentColor" d="M12 4l-8 8h6v8h4v-8h6z"/>
-          </svg>
-          <span class="btn-label">BRANCH UP</span>
+          <canvas class="btn-particle-canvas"></canvas>
+          <div class="btn-content">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <path fill="currentColor" d="M12 4l-8 8h6v8h4v-8h6z"/>
+            </svg>
+            <span class="btn-key-hint">W / ↑</span>
+          </div>
         </button>
 
         <button id="btn-forward" class="btn-choice" aria-label="Branch Forward" data-choice="forward">
-          <svg viewBox="0 0 24 24" width="24" height="24">
-            <path fill="currentColor" d="M12 4l8 8h-6v8h-4v-8H4z" style="transform: rotate(90deg); transform-origin: 12px 12px;"/>
-          </svg>
-          <span class="btn-label">FORWARD</span>
+          <canvas class="btn-particle-canvas"></canvas>
+          <div class="btn-content">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <path fill="currentColor" d="M12 4l8 8h-6v8h-4v-8H4z" style="transform: rotate(90deg); transform-origin: 12px 12px;"/>
+            </svg>
+            <span class="btn-key-hint">D / →</span>
+          </div>
         </button>
 
         <button id="btn-down" class="btn-choice" aria-label="Branch Down" data-choice="down">
-          <svg viewBox="0 0 24 24" width="24" height="24">
-            <path fill="currentColor" d="M12 20l8-8h-6V4h-4v8H4z"/>
-          </svg>
-          <span class="btn-label">BRANCH DOWN</span>
+          <canvas class="btn-particle-canvas"></canvas>
+          <div class="btn-content">
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <path fill="currentColor" d="M12 20l8-8h-6V4h-4v8H4z"/>
+            </svg>
+            <span class="btn-key-hint">S / ↓</span>
+          </div>
         </button>
       </nav>
 

@@ -2,6 +2,39 @@ const Phaser = window.Phaser;
 import { STATE } from './state.js';
 import { audio } from './audio.js';
 
+class IntroMacroStructure {
+  constructor(width, height) {
+    this.x = Math.random() * width;
+    this.y = Math.random() * height;
+    this.radius = 180 + Math.random() * 220;
+    this.speed = 0.08 + Math.random() * 0.12;
+    this.z = 1.5 + Math.random() * 1.5;
+    this.opacity = 0.02 + Math.random() * 0.03;
+    this.seed = Math.random() * 100;
+  }
+  
+  update(delta) {
+    this.x -= this.speed * (delta / 16.6);
+    this.y += Math.sin(Date.now() * 0.0005 + this.seed) * 0.1 * (delta / 16.6);
+  }
+  
+  draw(graphics, tx, ty, width, height, progress) {
+    // Parallax shift based on progress of the intro animation
+    const parallaxX = (tx - width / 2) * 0.05 / this.z * (1.0 + progress * 2.0);
+    const parallaxY = (ty - height / 2) * 0.05 / this.z * (1.0 + progress * 2.0);
+    
+    const steps = 6;
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1);
+      const r = this.radius * (1 - t * 0.5);
+      const alpha = this.opacity * t * (1.0 - progress * 0.5); // Slow fade out
+      
+      graphics.fillStyle(0x006c8a, alpha);
+      graphics.fillCircle(this.x + parallaxX, this.y + parallaxY, r);
+    }
+  }
+}
+
 export default class IntroScene extends Phaser.Scene {
   constructor() {
     super('IntroScene');
@@ -13,6 +46,7 @@ export default class IntroScene extends Phaser.Scene {
     this.introParticles = [];
     this.iceShards = [];
     this.sparks = [];
+    this.macroStructures = [];
     this.graphics = null;
   }
 
@@ -40,9 +74,15 @@ export default class IntroScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
     
-    const tx = Math.max(120, Math.min(width * 0.2, 220));
+    const tx = width <= 768 ? width * 0.3 : 400;
     const ty = height / 2;
     
+    // Spawn background organic macro structures
+    this.macroStructures = [];
+    for (let i = 0; i < 3; i++) {
+      this.macroStructures.push(new IntroMacroStructure(width, height));
+    }
+
     // Initialize intro swelling background dust particles
     this.introParticles = [];
     const colors = [0, 60, 120, 180, 240, 300]; // Rainbow hues
@@ -53,7 +93,7 @@ export default class IntroScene extends Phaser.Scene {
       this.introParticles.push({
         x: Math.cos(angle) * distance,
         y: Math.sin(angle) * distance * (0.6 + Math.random() * 0.4),
-        z: (Math.random() - 0.5) * 150,
+        z: (Math.random() - 0.5) * 150 + 50, // shifted forward slightly
         hue: colors[i % colors.length],
         speed: speed,
         size: 1.5 + Math.random() * 4.5
@@ -85,6 +125,7 @@ export default class IntroScene extends Phaser.Scene {
         y: ty + Math.sin(angle) * radius,
         vx: 0,
         vy: 0,
+        z: 0.6 + Math.random() * 1.2, // 3D depth factor
         points: points,
         rot: Math.random() * Math.PI * 2,
         rotSpeed: 0,
@@ -104,9 +145,15 @@ export default class IntroScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
     
-    const tx = Math.max(120, Math.min(width * 0.2, 220));
+    const tx = width <= 768 ? width * 0.3 : 400;
     const ty = height / 2;
     
+    // Update background macro-structures
+    this.macroStructures.forEach(m => {
+      m.update(delta);
+      m.draw(this.graphics, tx, ty, width, height, progress);
+    });
+
     // 1. Update/Draw background intro particles
     this.introParticles.forEach(p => {
       p.z -= 0.65 * delta * 0.06;
@@ -130,24 +177,26 @@ export default class IntroScene extends Phaser.Scene {
       this.hasTriggeredBoom = true;
       audio.playAwakeningBoom();
       
-      // Explosion logic
+      // Explosion logic for shards
       this.iceShards.forEach(s => {
         s.exploded = true;
-        const speed = 7 + Math.random() * 15;
+        const speed = (7 + Math.random() * 15) / s.z; // Speed scales with depth
         s.vx = Math.cos(s.angle) * speed;
         s.vy = Math.sin(s.angle) * speed;
-        s.rotSpeed = (Math.random() - 0.5) * 0.4;
+        s.rotSpeed = (Math.random() - 0.5) * 0.4 / s.z;
       });
       
       this.sparks = [];
       for (let i = 0; i < 150; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const speed = 3 + Math.random() * 20;
+        const sparkZ = 0.5 + Math.random() * 2.0; // Spark depth
+        const speed = (3 + Math.random() * 20) / sparkZ;
         this.sparks.push({
           x: tx,
           y: ty,
           vx: Math.cos(angle) * speed,
           vy: Math.sin(angle) * speed,
+          z: sparkZ,
           size: 2.0 + Math.random() * 6.0,
           hue: 12 + Math.random() * 38,
           life: 1.0,
@@ -177,6 +226,9 @@ export default class IntroScene extends Phaser.Scene {
       this.graphics.closePath();
       this.graphics.fillPath();
       this.graphics.strokePath();
+
+      // Render wiggling character motion inside the frozen shell (pulsating and wiggling tail)
+      this.drawPlayer(tx, ty, 0.72 + Math.sin(time * 0.005) * 0.03, 0.38 + frozenAlpha * 0.25, time);
       
       // Crack lines
       const crackProgress = Math.pow(progress / 0.66, 2.5);
@@ -199,7 +251,7 @@ export default class IntroScene extends Phaser.Scene {
     if (progress >= 0.66) {
       const waveProgress = (progress - 0.66) / 0.34;
       
-      // Update/Draw Shards
+      // Update/Draw Shards (ordered by depth)
       this.iceShards.forEach(s => {
         if (s.alpha <= 0) return;
         
@@ -210,16 +262,17 @@ export default class IntroScene extends Phaser.Scene {
           s.alpha = Math.max(0, s.alpha - 0.035 * (delta / 16.6));
         }
         
-        this.graphics.lineStyle(2.0, 0xffffff, 0.95 * s.alpha);
-        this.graphics.fillStyle(0x96e6ff, 0.9 * s.alpha);
+        const currentScale = 1.0 / s.z;
+        this.graphics.lineStyle(2.0 * currentScale, 0xffffff, 0.95 * s.alpha);
+        this.graphics.fillStyle(0x96e6ff, 0.9 * s.alpha * currentScale);
         
         this.graphics.beginPath();
-        const startX = s.x + s.points[0].x * Math.cos(s.rot) - s.points[0].y * Math.sin(s.rot);
-        const startY = s.y + s.points[0].x * Math.sin(s.rot) + s.points[0].y * Math.cos(s.rot);
+        const startX = s.x + s.points[0].x * Math.cos(s.rot) * currentScale - s.points[0].y * Math.sin(s.rot) * currentScale;
+        const startY = s.y + s.points[0].x * Math.sin(s.rot) * currentScale + s.points[0].y * Math.cos(s.rot) * currentScale;
         this.graphics.moveTo(startX, startY);
         for (let i = 1; i < s.points.length; i++) {
-          const px = s.x + s.points[i].x * Math.cos(s.rot) - s.points[i].y * Math.sin(s.rot);
-          const py = s.y + s.points[i].x * Math.sin(s.rot) + s.points[i].y * Math.cos(s.rot);
+          const px = s.x + s.points[i].x * Math.cos(s.rot) * currentScale - s.points[i].y * Math.sin(s.rot) * currentScale;
+          const py = s.y + s.points[i].x * Math.sin(s.rot) * currentScale + s.points[i].y * Math.cos(s.rot) * currentScale;
           this.graphics.lineTo(px, py);
         }
         this.graphics.closePath();
@@ -233,15 +286,23 @@ export default class IntroScene extends Phaser.Scene {
         s.y += s.vy * (delta / 16.6);
         s.life = Math.max(0, s.life - s.decay);
         
-        const size1 = s.size * (0.3 + s.life * 0.7);
-        const size2 = s.size * 2.8 * s.life;
+        const currentScale = 1.0 / s.z;
+        const size1 = s.size * (0.3 + s.life * 0.7) * currentScale;
+        const size2 = s.size * 2.8 * s.life * currentScale;
         const color = Phaser.Display.Color.HSLToColor(s.hue / 360, 1.0, 0.62).color;
         const outerColor = Phaser.Display.Color.HSLToColor(s.hue / 360, 1.0, 0.50).color;
         
         this.graphics.fillStyle(color, s.life * 0.95);
         this.graphics.fillCircle(s.x, s.y, size1);
-        this.graphics.fillStyle(outerColor, s.life * 0.18);
-        this.graphics.fillCircle(s.x, s.y, size2);
+        
+        // Bokeh effect for close sparks (foreground bokeh)
+        if (s.z < 0.8) {
+          this.graphics.fillStyle(outerColor, s.life * 0.35);
+          this.graphics.fillCircle(s.x, s.y, size2 * 1.5);
+        } else {
+          this.graphics.fillStyle(outerColor, s.life * 0.18);
+          this.graphics.fillCircle(s.x, s.y, size2);
+        }
       });
       this.sparks = this.sparks.filter(s => s.life > 0);
       
@@ -272,6 +333,10 @@ export default class IntroScene extends Phaser.Scene {
       // Circular expanding shockwave
       this.graphics.lineStyle(6 * (1 - waveProgress) + 1.5, 0xff2d00, 0.9 * (1 - waveProgress));
       this.graphics.strokeCircle(tx, ty, 40 * waveProgress * 7.5);
+
+      // Draw fully awakened wiggling cell emerging from the explosion
+      const wakeScale = 0.75 + waveProgress * 0.25;
+      this.drawPlayer(tx, ty, wakeScale, 1.0, time);
     }
     
     // 5. Complete transition at 3 seconds
@@ -279,5 +344,86 @@ export default class IntroScene extends Phaser.Scene {
       this.isActive = false;
       this.game.events.emit('intro-complete');
     }
+  }
+
+  drawPlayer(tx, ty, scale, opacity, time) {
+    const baseRad = (this.scale.width <= 768 ? 45 : 78) * scale;
+    
+    // Draw tail
+    const tailCount = 4;
+    for (let tNum = 0; tNum < tailCount; tNum++) {
+      this.graphics.beginPath();
+      this.graphics.moveTo(tx, ty);
+      
+      const phaseOffset = tNum * (Math.PI / 2);
+      const amp = (5 + tNum * 2.5) * scale;
+      const width = (1.5 - tNum * 0.25) * scale;
+      
+      for (let i = 1; i < 20; i++) {
+        const wave = Math.sin(time * 0.012 - i * 0.35 + phaseOffset) * (amp * (1 - i / 20));
+        const emergeOffset = (tNum - 1.5) * 4 * (1 - i / 20) * scale;
+        this.graphics.lineTo(tx - i * 5 * scale, ty + wave + emergeOffset);
+      }
+      
+      if (tNum === 0) {
+        this.graphics.lineStyle(width * 3.5, 0xffffff, opacity * 0.22);
+        this.graphics.strokePath();
+      }
+      
+      this.graphics.lineStyle(width, 0xffffff, opacity);
+      this.graphics.strokePath();
+    }
+    
+    // Membrane draw helper
+    const drawMembrane = (mScale, color, alpha) => {
+      this.graphics.fillStyle(color, alpha * opacity);
+      this.graphics.beginPath();
+      
+      const numPts = 16;
+      for (let i = 0; i < numPts; i++) {
+        const angle = (i / numPts) * Math.PI * 2;
+        const w = Math.sin(time * 0.003 + angle * 3) * 3;
+        const px = tx + (baseRad + w) * Math.cos(angle) * mScale;
+        const py = ty + (baseRad + w) * Math.sin(angle) * mScale;
+        if (i === 0) this.graphics.moveTo(px, py);
+        else this.graphics.lineTo(px, py);
+      }
+      this.graphics.closePath();
+      this.graphics.fillPath();
+    };
+    
+    const strokeMembrane = (lineWidth, color, alpha) => {
+      this.graphics.lineStyle(lineWidth, color, alpha * opacity);
+      this.graphics.beginPath();
+      const numPts = 16;
+      for (let i = 0; i < numPts; i++) {
+        const angle = (i / numPts) * Math.PI * 2;
+        const w = Math.sin(time * 0.003 + angle * 3) * 3;
+        const px = tx + (baseRad + w) * Math.cos(angle);
+        const py = ty + (baseRad + w) * Math.sin(angle);
+        if (i === 0) this.graphics.moveTo(px, py);
+        else this.graphics.lineTo(px, py);
+      }
+      this.graphics.closePath();
+      this.graphics.strokePath();
+    };
+    
+    strokeMembrane(40 * scale, 0xffffff, 0.08);
+    strokeMembrane(24 * scale, 0xffffff, 0.16);
+    strokeMembrane(10 * scale, 0xffffff, 0.35);
+    
+    drawMembrane(1.00, 0x050508, 0.95);
+    drawMembrane(0.92, 0xffffff, 0.08);
+    drawMembrane(0.65, 0xffffff, 0.22);
+    drawMembrane(0.20, 0xffffff, 0.65);
+    drawMembrane(0.08, 0xffffff, 0.95);
+    
+    strokeMembrane(2.5 * scale, 0xffffff, 0.98);
+    
+    this.graphics.beginPath();
+    this.graphics.fillStyle(0xffffff, 0.48 * opacity);
+    this.graphics.fillCircle(tx - baseRad * 0.3, ty - baseRad * 0.3, baseRad * 0.16);
+    
+    // Intro cell rendering ends here (nucleus and rotating loops removed)
   }
 }

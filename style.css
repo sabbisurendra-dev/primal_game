@@ -268,6 +268,7 @@ html, body {
   justify-content: center;
   position: relative;
   overflow: hidden;
+  margin-left: 200px;
 }
 
 .narrative-content {
@@ -299,74 +300,124 @@ html, body {
   justify-content: flex-end;
   align-items: center;
   padding-bottom: 8px;
+  margin-left: 200px;
 }
 
 .btn-choice {
+  position: relative;
   background: rgba(18, 18, 18, 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 50%;
   color: var(--color-text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 14px 24px;
+  width: 96px;
+  height: 96px;
+  padding: 0;
   cursor: pointer;
-  font-family: var(--font-ui);
-  font-weight: 700;
-  font-size: 0.85rem;
-  letter-spacing: 0.08em;
   transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+
+.btn-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.btn-key-hint {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: inherit;
+  opacity: 0.7;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  transition: opacity 0.2s ease;
+}
+
+.btn-choice:hover .btn-key-hint {
+  opacity: 1.0;
+}
+
+.btn-particle-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 50%;
 }
 
 .btn-choice svg {
-  transition: transform 0.2s ease;
+  width: 40px;
+  height: 40px;
+  opacity: 0.85;
+  z-index: 2;
+  transition: all 0.2s ease;
 }
 
 .btn-choice:hover {
-  border-color: rgba(255, 255, 255, 0.4);
-  color: var(--color-text-primary);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(255,255,255,0.08);
+  transform: translateY(-4px);
+}
+
+.btn-choice:hover svg {
+  opacity: 1.0;
 }
 
 .btn-choice:active {
   transform: translateY(1px);
 }
 
-.btn-choice[data-choice="up"]:hover {
-  border-color: var(--color-accent-green);
-  color: var(--color-accent-green);
-  box-shadow: 0 6px 18px rgba(46, 204, 113, 0.15);
-}
 .btn-choice[data-choice="up"]:hover svg {
-  transform: translateY(-3px);
+  transform: translateY(-4px) scale(1.1);
 }
 
-.btn-choice[data-choice="down"]:hover {
-  border-color: var(--color-accent-red);
-  color: var(--color-accent-red);
-  box-shadow: 0 6px 18px rgba(231, 76, 60, 0.15);
-}
 .btn-choice[data-choice="down"]:hover svg {
-  transform: translateY(3px);
+  transform: translateY(4px) scale(1.1);
 }
 
-.btn-choice[data-choice="forward"]:hover {
-  border-color: var(--color-neutral-white);
-  color: var(--color-neutral-white);
-  box-shadow: 0 6px 18px rgba(255, 255, 255, 0.15);
-}
 .btn-choice[data-choice="forward"]:hover svg {
-  transform: translateX(3px);
+  transform: translateX(4px) scale(1.1);
 }
 
-.btn-label {
-  display: block;
+.btn-choice[data-quality="best"] {
+  border-color: rgba(46, 204, 113, 0.85);
+  box-shadow: 0 0 20px rgba(46, 204, 113, 0.65), inset 0 0 10px rgba(46, 204, 113, 0.35);
+  color: #2ecc71;
 }
+.btn-choice[data-quality="best"] svg {
+  color: #2ecc71;
+}
+
+.btn-choice[data-quality="ok"] {
+  border-color: rgba(255, 255, 255, 0.65);
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+}
+.btn-choice[data-quality="ok"] svg {
+  color: #ffffff;
+}
+
+.btn-choice[data-quality="worst"] {
+  border-color: rgba(231, 76, 60, 0.85);
+  box-shadow: 0 0 20px rgba(231, 76, 60, 0.65), inset 0 0 10px rgba(231, 76, 60, 0.35);
+  color: #e74c3c;
+}
+.btn-choice[data-quality="worst"] svg {
+  color: #e74c3c;
+}
+
 
 /* Designer Tweaker Panel */
 .dev-panel {
@@ -634,6 +685,7 @@ html, body {
   .narrative-panel {
     min-height: 60px;
     padding: 10px 14px;
+    margin-left: 0;
   }
   
   .narrative-content {
@@ -643,20 +695,26 @@ html, body {
   .choices-panel {
     justify-content: center;
     width: 100%;
-    gap: 10px;
+    gap: 12px;
     padding-bottom: 12px;
+    margin-left: 0;
   }
   
   .btn-choice {
-    flex: 1;
-    padding: 12px 8px;
-    font-size: 0.7rem;
-    gap: 6px;
+    flex: none;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    padding: 0;
   }
   
   .btn-choice svg {
-    width: 18px;
-    height: 18px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .btn-key-hint {
+    font-size: 0.55rem;
   }
   
   .logo {
@@ -754,3 +812,44 @@ html, body {
     text-shadow: 0 0 4px rgba(175, 235, 255, 0.2);
   }
 }
+
+/* Priority 4: Juiced Reward/Feedback Overlays */
+.floating-text-juice {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #f5c842;
+  text-shadow: 0 0 8px rgba(245, 200, 66, 0.6), 0 2px 4px black;
+  pointer-events: none;
+  opacity: 1;
+  transition: transform 1.2s ease-out, opacity 1.2s ease-in;
+  z-index: 1000;
+}
+.floating-text-juice.float-active {
+  transform: translate(-50%, -100px);
+  opacity: 0;
+}
+
+.milestone-flash-text {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-size: 2.5rem;
+  letter-spacing: 0.2em;
+  color: #ffffff;
+  text-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transition: transform 1.5s cubic-bezier(0.1, 0.8, 0.2, 1), opacity 1.5s ease-out;
+  z-index: 1000;
+}
+.milestone-flash-text.flash-active {
+  transform: translate(-50%, -50%) scale(1.1);
+  opacity: 0.85;
+}
+

@@ -1,11 +1,92 @@
 import { audio } from './audio.js';
 
+// Priority 6: Personal Bests tracking
+const PERSONAL_BESTS = {
+  longestStreak: 0,
+  peakHealth: 0,
+  duration: 0
+};
+
+// Try to load from localStorage
+try {
+  const stored = localStorage.getItem('primal_personal_best');
+  if (stored) {
+    Object.assign(PERSONAL_BESTS, JSON.parse(stored));
+  }
+} catch (e) {
+  console.warn("localStorage not available", e);
+}
+
+function savePersonalBests() {
+  try {
+    localStorage.setItem('primal_personal_best', JSON.stringify(PERSONAL_BESTS));
+  } catch (e) {}
+}
+
+export function shakeCanvas() {
+  const canvas = document.getElementById('game-canvas');
+  if (!canvas) return;
+  const duration = 220;
+  const start = performance.now();
+  const frequency = 5;
+  function animate(time) {
+    const elapsed = time - start;
+    if (elapsed >= duration) {
+      canvas.style.transform = '';
+      return;
+    }
+    const t = elapsed / duration;
+    const decay = 1 - t;
+    const dx = Math.sin(t * Math.PI * 2 * frequency) * 3 * decay;
+    const dy = Math.cos(t * Math.PI * 2 * frequency) * 2 * decay;
+    canvas.style.transform = `translate(${dx}px, ${dy}px)`;
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+}
+
+export function spawnFloatingTextHTML(text, x, y) {
+  const container = document.getElementById('ui-layer');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = 'floating-text-juice';
+  el.textContent = text;
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+  container.appendChild(el);
+  
+  setTimeout(() => el.classList.add('float-active'), 50);
+  setTimeout(() => el.remove(), 1250);
+}
+window.spawnFloatingTextHTML = spawnFloatingTextHTML;
+
+export function triggerMilestoneFlash(text) {
+  const container = document.getElementById('ui-layer');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = 'milestone-flash-text';
+  el.textContent = text;
+  container.appendChild(el);
+  
+  setTimeout(() => el.classList.add('flash-active'), 50);
+  setTimeout(() => el.remove(), 1500);
+}
+window.triggerMilestoneFlash = triggerMilestoneFlash;
+
+export function triggerScreenCompression() {
+  document.documentElement.style.setProperty('--vignette-scale', '35%');
+  document.documentElement.style.setProperty('--vignette-opacity', '0.90');
+  setTimeout(() => {
+    STATE_CONTROLLER.checkDDAEffects();
+  }, 500);
+}
+
 // --- 1. DESIGNER CONFIGURATION / TWEAKS ---
 export const CONFIG = {
   survivalWeight: 1.0,
   healthWeight: 1.0,
   reproWeight: 1.0,
-  flowSpeed: 3.5, // Base scrolling speed
+  flowSpeed: 1.75, // Base scrolling speed (reduced by 50%)
   
   // Base changes for choice outcomes (modified by weights)
   outcomes: {
@@ -15,8 +96,8 @@ export const CONFIG = {
   },
   
   // Threat warning settings
-  threatInterval: 12000, // ms between threats
-  threatDuration: 3000,  // ms warning lasts before fork choice
+  threatInterval: 24000, // ms between threats (doubled to match 50% speed)
+  threatDuration: 6000,  // ms warning lasts before fork choice (doubled to match 50% speed)
 };
 
 // --- 2. NARRATIVE TEXT DATABASE ---
@@ -92,13 +173,30 @@ export const STATE = {
   hasTriggeredBoom: false,
   isTransitioning: false,
   forkTimer: 3.0,
+  hoveredPathIndex: null,
   
   // Paths
   paths: [],
   selectedPathIndex: 1,
   
   // Generation counter
-  generation: 1
+  generation: 1,
+
+  // Priority 4: Streak & Milestones
+  currentStreak: 0,
+  longestStreak: 0,
+  sessionStartTime: 0,
+  milestone30: false,
+  milestone60: false,
+  milestone90: false,
+  
+  // Priority 6: Session statistics
+  peakHealth: 50,
+  bestChoicesCount: 0,
+  okChoicesCount: 0,
+  worstChoicesCount: 0,
+  totalChoices: 0,
+  distanceTraveled: 0
 };
 
 // Helper to safely obtain the active Phaser GameScene instance
@@ -126,12 +224,37 @@ export const STATE_CONTROLLER = {
     STATE.health = 50;
     STATE.repro = 10;
     
+    STATE.currentStreak = 0;
+    STATE.longestStreak = 0;
+    STATE.peakHealth = 50;
+    STATE.bestChoicesCount = 0;
+    STATE.okChoicesCount = 0;
+    STATE.worstChoicesCount = 0;
+    STATE.totalChoices = 0;
+    STATE.distanceTraveled = 0;
+    STATE.sessionStartTime = Date.now();
+    STATE.milestone30 = false;
+    STATE.milestone60 = false;
+    STATE.milestone90 = false;
+    
     STATE.currentSpeed = CONFIG.flowSpeed;
     STATE.targetSpeed = CONFIG.flowSpeed;
     
     this.updateHUD();
     const scene = getGameScene();
-    if (scene && scene.player) scene.generatePaths();
+    if (scene) {
+      if (scene.scale) {
+        const height = scene.scale.height;
+        if (scene.player) {
+          scene.player.y = height / 2;
+          scene.player.targetY = height / 2;
+          scene.player.steerOffset = 0;
+        }
+      }
+      if (scene.player) {
+        scene.generatePaths();
+      }
+    }
     
     document.getElementById('modal-start').classList.add('hidden');
     document.getElementById('ui-layer').classList.remove('hidden');
@@ -142,7 +265,7 @@ export const STATE_CONTROLLER = {
   },
   
   resetForkTimer() {
-    STATE.forkTimer = 3.0;
+    STATE.forkTimer = 6.0; // doubled from 3.0 to match 50% speed
   },
   
   triggerThreatLoop() {
@@ -162,6 +285,7 @@ export const STATE_CONTROLLER = {
     STATE.isThreatWarning = true;
     document.getElementById('threat-indicator').classList.remove('hidden');
     audio.setTempo(330);
+    audio.startWarningDrone();
     const scene = getGameScene();
     if (scene && scene.player) scene.generatePaths();
   },
@@ -169,10 +293,11 @@ export const STATE_CONTROLLER = {
   deactivateThreatWarning() {
     STATE.isThreatWarning = false;
     document.getElementById('threat-indicator').classList.add('hidden');
-    audio.setTempo(1200);
+    audio.setTempo(1000 / (0.8 + (STATE.health / 100) * 1.2));
+    audio.stopWarningDrone();
   },
   
-  choosePath(pathIndex) {
+  choosePath(pathIndex, isAuto = false) {
     if (STATE.isTransitioning || !STATE.isPlaying) return;
     STATE.isTransitioning = true;
     
@@ -180,20 +305,36 @@ export const STATE_CONTROLLER = {
     if (!chosenPath) return;
     
     audio.playSelect(chosenPath.quality);
-    this.animateTransition(chosenPath);
+    this.animateTransition(chosenPath, isAuto);
   },
   
-  animateTransition(path) {
+  animateTransition(path, isAuto) {
     const outcomeSpeed = CONFIG.flowSpeed * CONFIG.outcomes[path.quality].speedMultiplier;
     STATE.targetSpeed = outcomeSpeed * 2.2;
+    STATE.transitionStart = Date.now();
+    STATE.chosenPathIndex = path.index;
     
     const scene = getGameScene();
     if (scene) {
       scene.spawnChoiceSplash(scene.player.x, scene.player.y, path.quality);
       scene.player.targetY = path.endY;
+      
+      // Screen shake on worst selection
+      if (path.quality === 'worst') {
+        shakeCanvas();
+      }
+      
+      // Best path golden particle burst + nutrient absorption trail
+      if (path.quality === 'best') {
+        scene.spawnBestPathBurst(scene.player.x, scene.player.y);
+        scene.spawnNutrientAbsorptionTrail();
+      }
+      
+      // Cell membrane ripple on every choice
+      scene.triggerMembraneRipple();
     }
     
-    this.applyOutcome(path.quality);
+    this.applyOutcome(path.quality, isAuto);
     
     setTimeout(() => {
       STATE.targetSpeed = outcomeSpeed;
@@ -204,19 +345,71 @@ export const STATE_CONTROLLER = {
       }
       this.resolveStep();
       STATE.isTransitioning = false;
+      STATE.transitionStart = 0;
       this.resetForkTimer();
     }, 450);
   },
   
-  applyOutcome(quality) {
+  applyOutcome(quality, isAuto = false) {
     const changes = CONFIG.outcomes[quality];
-    const ds = changes.survival * CONFIG.survivalWeight;
-    const dh = changes.health * CONFIG.healthWeight;
-    const dr = changes.repro * CONFIG.reproWeight;
+    let ds = changes.survival * CONFIG.survivalWeight;
+    let dh = changes.health * CONFIG.healthWeight;
+    let dr = changes.repro * CONFIG.reproWeight;
+    
+    // If choice is resolved automatically due to timeout/no user input, prevent any metric increases
+    if (isAuto) {
+      if (ds > 0) ds = 0;
+      if (dh > 0) dh = 0;
+      if (dr > 0) dr = 0;
+    }
     
     STATE.survival = Math.max(0, Math.min(100, STATE.survival + ds));
     STATE.health = Math.max(5, Math.min(100, STATE.health + dh));
     STATE.repro = Math.max(0, Math.min(100, STATE.repro + dr));
+    
+    // Priority 6: Choice stats and peak health tracking
+    STATE.totalChoices++;
+    if (quality === 'best') STATE.bestChoicesCount++;
+    else if (quality === 'ok') STATE.okChoicesCount++;
+    else if (quality === 'worst') STATE.worstChoicesCount++;
+    
+    if (STATE.health > STATE.peakHealth) {
+      STATE.peakHealth = STATE.health;
+    }
+    
+    // Priority 4: Streak counter
+    const scene = getGameScene();
+    if (quality === 'best' || quality === 'ok') {
+      STATE.currentStreak++;
+      if (STATE.currentStreak > STATE.longestStreak) {
+        STATE.longestStreak = STATE.currentStreak;
+      }
+      
+      if (scene && scene.player) {
+        const offsetRad = scene.player.radius * scene.player.massScale * (STATE.isPlaying ? 1.0 : 3.0);
+        if (STATE.currentStreak === 3) {
+          spawnFloatingTextHTML("THRIVING ×3", scene.player.x, scene.player.y - offsetRad - 20);
+        } else if (STATE.currentStreak === 5) {
+          spawnFloatingTextHTML("THRIVING ×5", scene.player.x, scene.player.y - offsetRad - 20);
+          scene.triggerRingPulse();
+        } else if (STATE.currentStreak >= 7) {
+          spawnFloatingTextHTML(`THRIVING ×${STATE.currentStreak}`, scene.player.x, scene.player.y - offsetRad - 20);
+          scene.triggerRingPulse();
+        }
+      }
+      
+      // 4d. Near-miss floating text
+      const bestAvailable = STATE.paths.some(p => p.quality === 'best');
+      if (quality === 'ok' && bestAvailable && scene && scene.player) {
+        const offsetRad = scene.player.radius * scene.player.massScale * (STATE.isPlaying ? 1.0 : 3.0);
+        spawnFloatingTextHTML("+STABLE", scene.player.x, scene.player.y - offsetRad - 45);
+      }
+    } else if (quality === 'worst') {
+      STATE.currentStreak = 0;
+      triggerScreenCompression();
+    }
+    
+    audio.updateStreakHarmonics(STATE.currentStreak);
     
     this.updateHUD();
     this.checkDDAEffects();
@@ -224,8 +417,9 @@ export const STATE_CONTROLLER = {
   
   checkDDAEffects() {
     const isCritical = STATE.health <= 25;
+    const isThriving = STATE.currentStreak >= 7;
     const vigScale = isCritical ? '45%' : '100%';
-    const vigOpacity = isCritical ? '0.90' : '0.15';
+    const vigOpacity = isCritical ? '0.90' : (isThriving ? '0.04' : '0.15');
     const vigColor = isCritical ? '35, 0, 0' : '0, 0, 0';
     
     document.documentElement.style.setProperty('--vignette-scale', vigScale);
@@ -233,6 +427,10 @@ export const STATE_CONTROLLER = {
     document.documentElement.style.setProperty('--vignette-color', vigColor);
     
     audio.setMuffle(STATE.health);
+    
+    if (!STATE.isThreatWarning) {
+      audio.setTempo(1000 / (0.8 + (STATE.health / 100) * 1.2));
+    }
     
     if (isCritical) {
       STATE.hasLifeline = true;
@@ -290,9 +488,39 @@ export const STATE_CONTROLLER = {
     STATE.isPlaying = false;
     clearTimeout(STATE.threatTimer);
     
+    // Save/update personal bests
+    const sessionDuration = (Date.now() - STATE.sessionStartTime) / 1000;
+    let pbUpdated = false;
+    if (STATE.longestStreak > PERSONAL_BESTS.longestStreak) {
+      PERSONAL_BESTS.longestStreak = STATE.longestStreak;
+      pbUpdated = true;
+    }
+    if (STATE.peakHealth > PERSONAL_BESTS.peakHealth) {
+      PERSONAL_BESTS.peakHealth = STATE.peakHealth;
+      pbUpdated = true;
+    }
+    if (sessionDuration > PERSONAL_BESTS.duration) {
+      PERSONAL_BESTS.duration = sessionDuration;
+      pbUpdated = true;
+    }
+    if (pbUpdated) {
+      savePersonalBests();
+    }
+    
     const titleEl = document.getElementById('chapter-title');
     const summaryEl = document.getElementById('chapter-summary');
     const btnCont = document.getElementById('btn-chapter-continue');
+    
+    const getDeltaStr = (val, bestVal, suffix = "") => {
+      const diff = val - bestVal;
+      if (diff > 0) return ` <span style="color: #2ecc71;">(+${Math.round(diff)}${suffix} vs Best)</span>`;
+      if (diff < 0) return ` <span style="color: #95a5a6;">(${Math.round(diff)}${suffix} vs Best)</span>`;
+      return ` <span style="color: #f1c40f;">(Match Best)</span>`;
+    };
+    
+    const streakDelta = getDeltaStr(STATE.longestStreak, PERSONAL_BESTS.longestStreak);
+    const healthDelta = getDeltaStr(STATE.peakHealth, PERSONAL_BESTS.peakHealth, "%");
+    const durationDelta = getDeltaStr(sessionDuration, PERSONAL_BESTS.duration, "s");
     
     if (STATE.chapter === 1) {
       audio.playMitosis();
@@ -300,9 +528,13 @@ export const STATE_CONTROLLER = {
       summaryEl.innerHTML = `
         <strong>Cellular Status Summary:</strong><br>
         • Generation: Gen-${STATE.generation}<br>
-        • Final Health: ${Math.round(STATE.health)}%<br>
         • Survival Instinct: ${Math.round(STATE.survival)}%<br>
-        • Reproductive Capacity: ${Math.round(STATE.repro)}%<br><br>
+        • Final Health: ${Math.round(STATE.health)}%<br>
+        • Peak Health: ${Math.round(STATE.peakHealth)}%${healthDelta}<br>
+        • Longest Streak: ${STATE.longestStreak}${streakDelta}<br>
+        • Distance Traveled: ${Math.round(STATE.distanceTraveled)}m<br>
+        • Choice Breakdown: ${STATE.bestChoicesCount} best, ${STATE.okChoicesCount} ok, ${STATE.worstChoicesCount} worst<br>
+        • Session Duration: ${Math.round(sessionDuration)}s${durationDelta}<br><br>
         You have successfully survived the Archaean Sea. If you choose to proceed, the narrative will develop further into Division and Scale.
       `;
       btnCont.textContent = "PROCEED TO CHAPTER 2 (3 mins)";
@@ -313,8 +545,11 @@ export const STATE_CONTROLLER = {
       summaryEl.innerHTML = `
         <strong>Mitosis Colony Log:</strong><br>
         • Generation: Gen-${STATE.generation + 1}<br>
-        • Division Rate: Stable<br>
-        • Biomass: Expanding<br><br>
+        • Peak Health: ${Math.round(STATE.peakHealth)}%${healthDelta}<br>
+        • Longest Streak: ${STATE.longestStreak}${streakDelta}<br>
+        • Distance Traveled: ${Math.round(STATE.distanceTraveled)}m<br>
+        • Choice Breakdown: ${STATE.bestChoicesCount} best, ${STATE.okChoicesCount} ok, ${STATE.worstChoicesCount} worst<br>
+        • Session Duration: ${Math.round(sessionDuration)}s${durationDelta}<br><br>
         The primordial broth is divided. The multicellular spark is lit. Prepare to explore the unstable Abyssal Deep.
       `;
       btnCont.textContent = "EXPLORE ABYSSAL DEEP (20 mins demo)";
@@ -329,6 +564,16 @@ export const STATE_CONTROLLER = {
     STATE.chapter++;
     STATE.chapterProgress = 0;
     
+    const scene = getGameScene();
+    if (scene && scene.scale) {
+      const height = scene.scale.height;
+      if (scene.player) {
+        scene.player.y = height / 2;
+        scene.player.targetY = height / 2;
+        scene.player.steerOffset = 0;
+      }
+    }
+    
     if (STATE.chapter === 2) {
       STATE.maxChapterSteps = 12;
       document.getElementById('current-chapter-name').textContent = "ADAPT AND DIVIDE";
@@ -340,7 +585,6 @@ export const STATE_CONTROLLER = {
     }
     
     STATE.isPlaying = true;
-    const scene = getGameScene();
     if (scene && scene.player) scene.generatePaths();
     this.resetForkTimer();
     this.triggerThreatLoop();
@@ -349,11 +593,75 @@ export const STATE_CONTROLLER = {
   triggerGameEnd() {
     audio.playMitosis();
     document.getElementById('ui-layer').classList.add('hidden');
-    document.getElementById('modal-end').classList.remove('hidden');
+    
+    // Save/update personal bests
+    const sessionDuration = (Date.now() - STATE.sessionStartTime) / 1000;
+    let pbUpdated = false;
+    if (STATE.longestStreak > PERSONAL_BESTS.longestStreak) {
+      PERSONAL_BESTS.longestStreak = STATE.longestStreak;
+      pbUpdated = true;
+    }
+    if (STATE.peakHealth > PERSONAL_BESTS.peakHealth) {
+      PERSONAL_BESTS.peakHealth = STATE.peakHealth;
+      pbUpdated = true;
+    }
+    if (sessionDuration > PERSONAL_BESTS.duration) {
+      PERSONAL_BESTS.duration = sessionDuration;
+      pbUpdated = true;
+    }
+    if (pbUpdated) {
+      savePersonalBests();
+    }
+    
+    const getDeltaStr = (val, bestVal, suffix = "") => {
+      const diff = val - bestVal;
+      if (diff > 0) return ` <span style="color: #2ecc71;">(+${Math.round(diff)}${suffix} vs Best)</span>`;
+      if (diff < 0) return ` <span style="color: #95a5a6;">(${Math.round(diff)}${suffix} vs Best)</span>`;
+      return ` <span style="color: #f1c40f;">(Match Best)</span>`;
+    };
+    
+    const streakDelta = getDeltaStr(STATE.longestStreak, PERSONAL_BESTS.longestStreak);
+    const healthDelta = getDeltaStr(STATE.peakHealth, PERSONAL_BESTS.peakHealth, "%");
+    const durationDelta = getDeltaStr(sessionDuration, PERSONAL_BESTS.duration, "s");
+
+    const modalEnd = document.getElementById('modal-end');
+    const endStory = modalEnd.querySelector('.modal-story');
+    endStory.innerHTML = `
+      Through hunger, tide, and hazard, you have endured.<br>
+      Your membrane expands. Your nucleus vibrates. You begin to divide.<br><br>
+      One cell becomes two. Two becomes many.<br>
+      The seed of tomorrow is planted in the deep.<br><br>
+      <strong>Final Evolution Session Logs (Gen-${STATE.generation}):</strong><br>
+      • Peak Health: ${Math.round(STATE.peakHealth)}%${healthDelta}<br>
+      • Longest Streak: ${STATE.longestStreak}${streakDelta}<br>
+      • Distance Traveled: ${Math.round(STATE.distanceTraveled)}m<br>
+      • Choice Breakdown: ${STATE.bestChoicesCount} best, ${STATE.okChoicesCount} ok, ${STATE.worstChoicesCount} worst<br>
+      • Final Time: ${Math.round(sessionDuration)}s${durationDelta}
+    `;
+    
+    // Rename CTA and add epigenetics subtitle
+    const restartBtn = document.getElementById('btn-loop-restart');
+    restartBtn.textContent = "EVOLVE AGAIN";
+    
+    let subtitle = document.getElementById('epigenetics-subtitle');
+    if (!subtitle) {
+      subtitle = document.createElement('div');
+      subtitle.id = 'epigenetics-subtitle';
+      subtitle.className = 'credits';
+      subtitle.style.fontSize = '0.9em';
+      subtitle.style.marginTop = '10px';
+      subtitle.style.color = '#a78bfa';
+      subtitle.textContent = "Retain epigenetic adaptations in the next generation (+2% base health)";
+      restartBtn.parentNode.insertBefore(subtitle, restartBtn.nextSibling);
+    }
+    
+    modalEnd.classList.remove('hidden');
   },
   
   restartCycle() {
     STATE.generation++;
+    // Roguelite epigenetic health buff
+    CONFIG.outcomes.best.health = CONFIG.outcomes.best.health + 1;
     document.getElementById('modal-end').classList.add('hidden');
     this.startGame();
   }

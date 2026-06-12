@@ -9,6 +9,14 @@ export class AudioController {
     this.ambientOsc2 = null;
     this.ambientLFO = null;
     
+    this.warningDroneOsc = null;
+    this.warningDroneGain = null;
+    this.warningDroneFilter = null;
+    
+    this.streakOsc1 = null;
+    this.streakOsc2 = null;
+    this.streakGain = null;
+    
     this.heartbeatTimer = null;
     this.heartbeatTempo = 1200; // ms between thumps
     this.isPlaying = false;
@@ -149,9 +157,12 @@ export class AudioController {
     if (!this.ctx || this.ctx.state === 'suspended') return;
     const now = this.ctx.currentTime;
     
-    // Heartbeat double thump: lub-dub
-    this.triggerThumpNode(now, 58, 0.45);
-    this.triggerThumpNode(now + 0.22, 44, 0.35);
+    // Heartbeat double thump frequency reactive to health
+    // Health 100% -> freq 58Hz, Health 0% -> freq 42Hz
+    const baseFreq = 42 + (window.STATE?.health || 50) / 100 * 16;
+    
+    this.triggerThumpNode(now, baseFreq, 0.45);
+    this.triggerThumpNode(now + 0.22, baseFreq * 0.75, 0.35);
   }
   
   triggerThumpNode(time, freq, vol) {
@@ -193,37 +204,89 @@ export class AudioController {
     gain.connect(this.masterVolume);
     
     if (type === 'best') {
+      // swooping liquid drop chime (+3 semitones)
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
-      osc.frequency.exponentialRampToValueAtTime(1320, now + 0.28);
+      osc.frequency.setValueAtTime(523.25, now);
+      osc.frequency.exponentialRampToValueAtTime(622.25, now + 0.08);
+      osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.22);
       
       gain.gain.setValueAtTime(0.25, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
       
       osc.start(now);
-      osc.stop(now + 0.35);
+      osc.stop(now + 0.3);
     } else if (type === 'worst') {
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(140, now);
-      osc.frequency.linearRampToValueAtTime(30, now + 0.35);
+      // dry scrape / membrane scrape
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(95, now);
+      osc.frequency.linearRampToValueAtTime(35, now + 0.38);
       
-      gain.gain.setValueAtTime(0.3, now);
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(120, now);
+      filter.frequency.linearRampToValueAtTime(60, now + 0.38);
+      
+      osc.disconnect(gain);
+      osc.connect(filter);
+      filter.connect(gain);
+      
+      gain.gain.setValueAtTime(0.28, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
       
       osc.start(now);
-      osc.stop(now + 0.45);
+      osc.stop(now + 0.42);
     } else {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(180, now);
-      osc.frequency.exponentialRampToValueAtTime(540, now + 0.08);
+      // bubble pop
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(60, now + 0.06);
       
       gain.gain.setValueAtTime(0.18, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
       
       osc.start(now);
-      osc.stop(now + 0.15);
+      osc.stop(now + 0.1);
     }
+  }
+  
+  playGrazingEat() {
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(680 + Math.random() * 200, now);
+    osc.frequency.exponentialRampToValueAtTime(1400, now + 0.08);
+    
+    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    
+    osc.connect(gain);
+    gain.connect(this.masterVolume || this.ctx.destination);
+    
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+  
+  playHazardHit() {
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(120, now);
+    osc.frequency.linearRampToValueAtTime(40, now + 0.15);
+    
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    
+    osc.connect(gain);
+    gain.connect(this.masterVolume || this.ctx.destination);
+    
+    osc.start(now);
+    osc.stop(now + 0.2);
   }
   
   playMitosis() {
@@ -250,6 +313,79 @@ export class AudioController {
     });
   }
   
+  startWarningDrone() {
+    if (!this.ctx || this.ctx.state === 'suspended') return;
+    this.stopWarningDrone();
+    
+    const now = this.ctx.currentTime;
+    this.warningDroneOsc = this.ctx.createOscillator();
+    this.warningDroneGain = this.ctx.createGain();
+    
+    this.warningDroneOsc.type = 'sawtooth';
+    this.warningDroneOsc.frequency.setValueAtTime(65, now);
+    
+    this.warningDroneFilter = this.ctx.createBiquadFilter();
+    this.warningDroneFilter.type = 'lowpass';
+    this.warningDroneFilter.frequency.setValueAtTime(120, now);
+    this.warningDroneFilter.frequency.linearRampToValueAtTime(250, now + 3.0);
+    
+    this.warningDroneGain.gain.setValueAtTime(0.001, now);
+    this.warningDroneGain.gain.linearRampToValueAtTime(0.18, now + 3.0);
+    
+    this.warningDroneOsc.connect(this.warningDroneFilter);
+    this.warningDroneFilter.connect(this.warningDroneGain);
+    this.warningDroneGain.connect(this.masterVolume);
+    
+    this.warningDroneOsc.start(now);
+  }
+  
+  stopWarningDrone() {
+    if (this.warningDroneOsc) {
+      try {
+        this.warningDroneOsc.stop();
+      } catch(e) {}
+      this.warningDroneOsc = null;
+    }
+    this.warningDroneGain = null;
+    this.warningDroneFilter = null;
+  }
+  
+  updateStreakHarmonics(streak) {
+    if (!this.ctx || !this.isPlaying) return;
+    
+    if (!this.streakGain) {
+      this.streakGain = this.ctx.createGain();
+      this.streakGain.gain.value = 0.0;
+      this.streakGain.connect(this.lowPass);
+      
+      this.streakOsc1 = this.ctx.createOscillator();
+      this.streakOsc1.type = 'sine';
+      this.streakOsc1.frequency.value = 110;
+      
+      this.streakOsc2 = this.ctx.createOscillator();
+      this.streakOsc2.type = 'sine';
+      this.streakOsc2.frequency.value = 165;
+      
+      this.streakOsc1.connect(this.streakGain);
+      this.streakOsc2.connect(this.streakGain);
+      
+      this.streakOsc1.start();
+      this.streakOsc2.start();
+    }
+    
+    const now = this.ctx.currentTime;
+    let targetGain = 0.0;
+    if (streak >= 7) {
+      targetGain = 0.09;
+    } else if (streak >= 5) {
+      targetGain = 0.06;
+    } else if (streak >= 3) {
+      targetGain = 0.03;
+    }
+    
+    this.streakGain.gain.setTargetAtTime(targetGain, now, 0.5);
+  }
+  
   stop() {
     this.isPlaying = false;
     clearTimeout(this.heartbeatTimer);
@@ -257,7 +393,17 @@ export class AudioController {
       if (this.ambientOsc1) this.ambientOsc1.stop();
       if (this.ambientOsc2) this.ambientOsc2.stop();
       if (this.ambientLFO) this.ambientLFO.stop();
+      if (this.warningDroneOsc) this.warningDroneOsc.stop();
+      if (this.streakOsc1) this.streakOsc1.stop();
+      if (this.streakOsc2) this.streakOsc2.stop();
     } catch(e) {}
+    this.ambientOsc1 = null;
+    this.ambientOsc2 = null;
+    this.ambientLFO = null;
+    this.warningDroneOsc = null;
+    this.streakOsc1 = null;
+    this.streakOsc2 = null;
+    this.streakGain = null;
     this.ctx = null;
   }
 }

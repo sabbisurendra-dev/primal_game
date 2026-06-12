@@ -1,31 +1,72 @@
 const Phaser = window.Phaser;
-import { STATE, CONFIG, STATE_CONTROLLER } from './state.js';
+import { STATE, CONFIG, STATE_CONTROLLER, triggerMilestoneFlash } from './state.js';
 
 // --- VISUAL RENDERING ENTITIES ---
 class Particle {
-  constructor(x, y, color, size, vx, vy, life) {
+  constructor(x, y, color, size, vx, vy, life, gy = 0) {
     this.x = x;
     this.y = y;
     this.color = color;
     this.size = size;
     this.vx = vx;
     this.vy = vy;
+    this.gy = gy;
     this.maxLife = life;
     this.life = life;
   }
   
   update(delta) {
-    this.x += this.vx * (delta / 16.6);
-    this.y += this.vy * (delta / 16.6);
-    this.life -= (delta / 16.6);
+    const dt = delta / 16.6;
+    this.x += this.vx * dt;
+    this.vy += this.gy * dt;
+    this.y += this.vy * dt;
+    this.life -= dt;
   }
   
   draw(graphics) {
     const alpha = Math.max(0, this.life / this.maxLife);
-    const colorRGB = this.color.includes('46, 204, 113') ? 0x2ecc71 : 
-                    this.color.includes('231, 76, 60') ? 0xe74c3c : 0xf2f2f2;
+    let colorRGB = 0xf2f2f2;
+    if (typeof this.color === 'number') {
+      colorRGB = this.color;
+    } else if (this.color.includes('46, 204, 113')) {
+      colorRGB = 0x2ecc71;
+    } else if (this.color.includes('231, 76, 60')) {
+      colorRGB = 0xe74c3c;
+    }
     graphics.fillStyle(colorRGB, alpha);
     graphics.fillCircle(this.x, this.y, this.size);
+  }
+}
+
+class AbsorptionParticle {
+  constructor(startX, startY, endX, endY, color, duration = 800) {
+    this.startX = startX;
+    this.startY = startY;
+    this.endX = endX;
+    this.endY = endY;
+    this.cpX = startX + (endX - startX) * 0.5;
+    this.cpY = startY + (Math.random() - 0.5) * 200;
+    this.color = color;
+    this.duration = duration;
+    this.time = 0;
+    this.x = startX;
+    this.y = startY;
+  }
+  
+  update(delta) {
+    this.time += delta;
+    const t = Math.min(1.0, this.time / this.duration);
+    if (t < 0) return true;
+    const mt = 1 - t;
+    this.x = mt * mt * this.startX + 2 * mt * t * this.cpX + t * t * this.endX;
+    this.y = mt * mt * this.startY + 2 * mt * t * this.cpY + t * t * this.endY;
+    return t < 1.0;
+  }
+  
+  draw(graphics) {
+    if (this.time < 0) return;
+    graphics.fillStyle(this.color, 0.8 * (1.0 - (this.time / this.duration) * 0.3));
+    graphics.fillCircle(this.x, this.y, 1.5);
   }
 }
 
@@ -37,30 +78,83 @@ class BackgroundDust {
   reset(width, height, randomizeX = false) {
     this.x = randomizeX ? Math.random() * width : width + 10;
     this.y = Math.random() * height;
-    this.size = 0.5 + Math.random() * 2.5;
-    this.speed = (0.3 + Math.random() * 0.9);
-    this.opacity = 0.08 + Math.random() * 0.28;
-    this.wiggleSpeed = 0.001 + Math.random() * 0.002;
-    this.wiggleAmp = 1.0 + Math.random() * 4.0;
+    this.z = 0.4 + Math.random() * 2.6; // depth factor (lower is closer/foreground)
+    this.size = (0.5 + Math.random() * 2.5) / this.z;
+    this.speed = (0.3 + Math.random() * 0.9) / this.z;
+    this.opacity = (0.08 + Math.random() * 0.28) / this.z;
+    this.wiggleSpeed = (0.001 + Math.random() * 0.002) / this.z;
+    this.wiggleAmp = (1.0 + Math.random() * 4.0) / this.z;
     this.seed = Math.random() * 100;
   }
   
   update(width, height, speedMultiplier, delta) {
-    this.x -= this.speed * speedMultiplier * (delta / 16.6);
+    let currentSpeed = this.speed;
+    if (STATE.currentStreak >= 7) {
+      currentSpeed = this.speed * 2.2;
+    }
+    this.x -= currentSpeed * speedMultiplier * (delta / 16.6);
     this.y += Math.sin(Date.now() * this.wiggleSpeed + this.seed) * this.wiggleAmp * 0.06 * (delta / 16.6);
     
-    if (this.x < -10) {
+    if (this.x < -20) {
       this.reset(width, height);
     }
   }
   
   draw(graphics) {
-    graphics.fillStyle(0xffffff, this.opacity);
-    graphics.fillCircle(this.x, this.y, this.size);
+    let size = this.size;
+    let opacity = this.opacity;
+    if (STATE.currentStreak >= 7) {
+      size = this.size * 1.5;
+      opacity = Math.min(0.7, this.opacity * 1.4);
+    }
+    graphics.fillStyle(0xffffff, opacity);
+    graphics.fillCircle(this.x, this.y, size);
     
-    if (this.size > 1.8) {
-      graphics.fillStyle(0xffffff, this.opacity * 0.25);
-      graphics.fillCircle(this.x, this.y, this.size * 2.5);
+    // Simulate bokeh for close foreground particles
+    if (this.z < 0.8) {
+      graphics.fillStyle(0xffffff, opacity * 0.35);
+      graphics.fillCircle(this.x, this.y, size * 2.8);
+    } else if (size > 1.8) {
+      graphics.fillStyle(0xffffff, opacity * 0.25);
+      graphics.fillCircle(this.x, this.y, size * 2.5);
+    }
+  }
+}
+
+class GameMacroStructure {
+  constructor(width, height) {
+    this.reset(width, height, true);
+  }
+  
+  reset(width, height, randomizeX = false) {
+    this.x = randomizeX ? Math.random() * width : width + 300;
+    this.y = Math.random() * height;
+    this.radius = 200 + Math.random() * 250;
+    this.speed = 0.12 + Math.random() * 0.18;
+    this.z = 1.4 + Math.random() * 1.6; // background depth
+    this.seed = Math.random() * 100;
+    this.opacity = 0.015 + Math.random() * 0.035;
+  }
+  
+  update(speedMultiplier, delta) {
+    this.x -= this.speed * speedMultiplier * (delta / 16.6);
+    this.y += Math.sin(Date.now() * 0.0004 + this.seed) * 0.08 * (delta / 16.6);
+    
+    if (this.x + this.radius < -50) {
+      this.reset(this.scaleWidth || 1000, this.scaleHeight || 600);
+    }
+  }
+  
+  draw(graphics) {
+    const steps = 7;
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1);
+      const r = this.radius * (1 - t * 0.5);
+      const alpha = this.opacity * t;
+      
+      // Muted dark organic misty green/teal shade
+      graphics.fillStyle(0x0a3c4a, alpha);
+      graphics.fillCircle(this.x, this.y, r);
     }
   }
 }
@@ -115,7 +209,9 @@ export default class GameScene extends Phaser.Scene {
   constructor() {
     super('GameScene');
     this.particles = [];
+    this.absorptionParticles = [];
     this.currents = [];
+    this.macroStructures = [];
     this.membranePoints = [];
     this.graphics = null;
     this.player = null;
@@ -127,18 +223,29 @@ export default class GameScene extends Phaser.Scene {
     // Position player cell
     const width = this.scale.width;
     const height = this.scale.height;
-    const px = Math.max(120, Math.min(width * 0.2, 220));
+    const isMobile = width <= 768;
+    const px = isMobile ? width * 0.3 : 400;
     
     this.player = {
       x: px,
       y: height / 2,
       targetY: height / 2,
-      radius: 78,
-      targetRadius: 78,
+      radius: isMobile ? 45 : 78,
+      targetRadius: isMobile ? 45 : 78,
       massScale: 1.0,
       wobbleSpeed: 0.005,
+      steerOffset: 0,
+      rippleTime: 0,
+      rippleDuration: 350,
+      reproOrganelleAlpha: 0,
+      ghosts: [],
+      glowColorRGB: { r: 46, g: 196, b: 182 },
+      glowHex: 0x2ec4b6,
       tail: []
     };
+    
+    this.ringPulseScale = 0.0;
+    this.ringPulseAlpha = 0.0;
     
     this.initMembrane();
     this.initCurrents(width, height);
@@ -190,13 +297,59 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < 160; i++) {
       this.currents.push(new BackgroundDust(width, height));
     }
+
+    this.macroStructures = [];
+    for (let i = 0; i < 5; i++) {
+      const ms = new GameMacroStructure(width, height);
+      ms.scaleWidth = width;
+      ms.scaleHeight = height;
+      this.macroStructures.push(ms);
+    }
+  }
+
+  spawnBestPathBurst(x, y) {
+    const count = 12 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1.0 + Math.random() * 1.0;
+      const vx = Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed;
+      const size = 2 + Math.random();
+      const life = 36;
+      this.particles.push(new Particle(x, y, 0x2ecc71, size, vx, vy, life, 0.3));
+    }
+  }
+
+  spawnNutrientAbsorptionTrail() {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    for (let i = 0; i < 8; i++) {
+      const startX = width + 10;
+      const startY = Math.random() * height;
+      const delay = i * 60;
+      const p = new AbsorptionParticle(startX, startY, this.player.x, this.player.y, 0x2ecc71, 800);
+      p.time = -delay;
+      this.absorptionParticles.push(p);
+    }
+  }
+
+  triggerMembraneRipple() {
+    this.player.rippleTime = 350;
   }
 
   resize(gameSize) {
     const width = gameSize.width;
     const height = gameSize.height;
+    const isMobile = width <= 768;
     
-    this.player.x = Math.max(120, Math.min(width * 0.2, 220));
+    this.player.radius = isMobile ? 45 : 78;
+    this.player.targetRadius = isMobile ? 45 : 78;
+    this.player.x = isMobile ? width * 0.3 : 400;
+    
+    const minY = isMobile ? 140 : 190;
+    const maxY = height - 120;
+    this.player.y = Math.max(minY, Math.min(maxY, this.player.y));
+    this.player.targetY = Math.max(minY, Math.min(maxY, this.player.targetY));
     
     if (STATE.isPlaying) {
       this.generatePaths();
@@ -222,10 +375,13 @@ export default class GameScene extends Phaser.Scene {
     }
     
     const branchDelta = Math.min(220, height * 0.28);
+    const isMobile = width <= 768;
+    const minY = isMobile ? 140 : 190;
+    const maxY = height - 120;
     const endYPositions = [
-      startY - branchDelta,
-      startY,
-      startY + branchDelta
+      Math.max(minY, Math.min(maxY, startY - branchDelta)),
+      Math.max(minY, Math.min(maxY, startY)),
+      Math.max(minY, Math.min(maxY, startY + branchDelta))
     ];
     
     STATE.paths = [];
@@ -249,6 +405,11 @@ export default class GameScene extends Phaser.Scene {
         endX: endX,
         particles: this.generatePathNutrients(startX, startY, cp1X, cp1Y, cp2X, cp2Y, endX, endY, qualities[i])
       });
+    }
+    
+    this.pathGenerationTime = Date.now();
+    if (window.updateButtonVisuals) {
+      window.updateButtonVisuals();
     }
   }
 
@@ -277,14 +438,14 @@ export default class GameScene extends Phaser.Scene {
     return list;
   }
 
-  getBezierPoint(p, t) {
+  getBezierPoint(p, t, shiftX = 0) {
     const mt = 1 - t;
     const mt2 = mt * mt;
     const mt3 = mt2 * mt;
     const t2 = t * t;
     const t3 = t2 * t;
     
-    const x = mt3 * this.player.x + 3 * mt2 * t * p.cp1X + 3 * mt * t2 * p.cp2X + t3 * p.endX;
+    const x = mt3 * (this.player.x - shiftX) + 3 * mt2 * t * (p.cp1X - shiftX) + 3 * mt * t2 * (p.cp2X - shiftX) + t3 * (p.endX - shiftX);
     const y = mt3 * p.startY + 3 * mt2 * t * p.cp1Y + 3 * mt * t2 * p.cp2Y + t3 * p.endY;
     
     return { x, y };
@@ -310,16 +471,22 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  triggerRingPulse() {
+    this.ringPulseScale = 0.0;
+    this.ringPulseAlpha = 1.0;
+  }
+
   update(time, delta) {
     this.graphics.clear();
     
     // Update fork selection timer and check auto-choice / poll inputs
     if (STATE.isPlaying && !STATE.isTransitioning) {
+      STATE.distanceTraveled += STATE.currentSpeed * (delta / 1000) * 10;
       STATE.forkTimer -= delta / 1000;
       if (STATE.forkTimer <= 0) {
         const fallbackPathIndex = STATE.isThreatWarning ? 
           STATE.paths.findIndex(p => p.quality === 'best') : 1;
-        STATE_CONTROLLER.choosePath(fallbackPathIndex !== -1 ? fallbackPathIndex : 1);
+        STATE_CONTROLLER.choosePath(fallbackPathIndex !== -1 ? fallbackPathIndex : 1, true);
       } else if (this.cursors && this.keys) {
         if (this.cursors.up.isDown || this.keys.w.isDown) {
           STATE_CONTROLLER.choosePath(0);
@@ -333,14 +500,190 @@ export default class GameScene extends Phaser.Scene {
     
     const width = this.scale.width;
     const height = this.scale.height;
+    const isMobile = width <= 768;
     
     // 1. Update Game Physics Entities
-    const targetX = Math.max(120, Math.min(width * 0.2, 220));
-    const targetY = STATE.isPlaying ? this.player.targetY : height / 2;
+    const targetX = isMobile ? width * 0.3 : 400;
+    
+    let trT = 0;
+    if (STATE.isTransitioning && STATE.transitionStart) {
+      const elapsed = Date.now() - STATE.transitionStart;
+      trT = Math.min(1.0, elapsed / 450);
+    }
+    
+    let targetY = STATE.isPlaying ? this.player.targetY : height / 2;
+    if (trT > 0 && STATE.chosenPathIndex !== undefined && STATE.paths && STATE.paths[STATE.chosenPathIndex]) {
+      const selectedPath = STATE.paths[STATE.chosenPathIndex];
+      const pt = this.getBezierPoint(selectedPath, trT);
+      
+      // Real-time steering input (WASD/Arrows or Mouse pointer)
+      const pointer = this.input.activePointer;
+      let keyboardSteer = 0;
+      if (this.cursors && this.keys) {
+        if (this.cursors.up.isDown || this.keys.w.isDown) {
+          keyboardSteer = -2.8;
+        } else if (this.cursors.down.isDown || this.keys.s.isDown) {
+          keyboardSteer = 2.8;
+        }
+      }
+      
+      if (keyboardSteer !== 0) {
+        this.player.steerOffset += keyboardSteer * (delta / 16.6);
+      } else if (pointer && pointer.isDown) {
+        const mouseSteerTarget = Phaser.Math.Clamp(pointer.y - pt.y, -35, 35);
+        this.player.steerOffset += (mouseSteerTarget - this.player.steerOffset) * 0.15 * (delta / 16.6);
+      } else {
+        this.player.steerOffset *= Math.pow(0.88, delta / 16.6);
+      }
+      
+      this.player.steerOffset = Phaser.Math.Clamp(this.player.steerOffset, -35, 35);
+      
+      targetY = pt.y + this.player.steerOffset;
+      this.player.y = pt.y + this.player.steerOffset;
+      this.player.targetY = pt.y + this.player.steerOffset;
+    } else {
+      this.player.steerOffset = 0;
+      this.player.y += (targetY - this.player.y) * 0.08 * (delta / 16.6);
+    }
     
     this.player.x += (targetX - this.player.x) * 0.08 * (delta / 16.6);
-    this.player.y += (targetY - this.player.y) * 0.08 * (delta / 16.6);
+
+    const minY = isMobile ? 140 : 190;
+    const maxY = height - 120;
+    this.player.y = Phaser.Math.Clamp(this.player.y, minY, maxY);
+    this.player.targetY = Phaser.Math.Clamp(this.player.targetY, minY, maxY);
+
+    // 2a. Smooth radius scaling based on health
+    const targetRadius = (isMobile ? 32 : 56) + (STATE.health / 100) * (isMobile ? 16 : 28);
+    this.player.radius += (targetRadius - this.player.radius) * 0.04 * (delta / 16.6);
+
+    // 2d. Color temperature shift based on health
+    let targetRGB = { r: 46, g: 196, b: 182 }; // Neutral teal #2ec4b6
+    if (STATE.health > 65) {
+      targetRGB = { r: 245, g: 200, b: 66 }; // Thriving gold #f5c842
+    } else if (STATE.health < 35) {
+      targetRGB = { r: 55, g: 138, b: 221 }; // Struggling blue #378ADD
+    }
     
+    if (!this.player.glowColorRGB) {
+      this.player.glowColorRGB = { r: 46, g: 196, b: 182 };
+    }
+    const lerpSpeed = 0.04 * (delta / 16.6);
+    this.player.glowColorRGB.r += (targetRGB.r - this.player.glowColorRGB.r) * lerpSpeed;
+    this.player.glowColorRGB.g += (targetRGB.g - this.player.glowColorRGB.g) * lerpSpeed;
+    this.player.glowColorRGB.b += (targetRGB.b - this.player.glowColorRGB.b) * lerpSpeed;
+    this.player.glowHex = (Math.round(this.player.glowColorRGB.r) << 16) + 
+                          (Math.round(this.player.glowColorRGB.g) << 8) + 
+                          Math.round(this.player.glowColorRGB.b);
+                          
+    // Subtle ambient color shift of vignette
+    if (Math.random() < 0.15) {
+      const vR = Math.round(this.player.glowColorRGB.r * 0.15);
+      const vG = Math.round(this.player.glowColorRGB.g * 0.15);
+      const vB = Math.round(this.player.glowColorRGB.b * 0.15);
+      document.documentElement.style.setProperty('--vignette-color', `${vR}, ${vG}, ${vB}`);
+    }
+
+    // 2c. Secondary organelle tracking
+    if (STATE.repro > 50) {
+      this.player.reproOrganelleAlpha = Math.min(1.0, (this.player.reproOrganelleAlpha || 0) + 0.05 * (delta / 16.6));
+    } else {
+      this.player.reproOrganelleAlpha = Math.max(0, (this.player.reproOrganelleAlpha || 0) - 0.05 * (delta / 16.6));
+    }
+
+    // Update ring pulse
+    if (this.ringPulseAlpha > 0) {
+      this.ringPulseScale += 0.04 * (delta / 16.6);
+      this.ringPulseAlpha -= 0.025 * (delta / 16.6);
+    }
+
+    // Update time-based milestones
+    if (STATE.isPlaying && STATE.sessionStartTime > 0) {
+      const elapsedSec = (Date.now() - STATE.sessionStartTime) / 1000;
+      if (elapsedSec >= 30 && !STATE.milestone30) {
+        STATE.milestone30 = true;
+        triggerMilestoneFlash("ADAPTING");
+      }
+      if (elapsedSec >= 60 && !STATE.milestone60) {
+        STATE.milestone60 = true;
+        triggerMilestoneFlash("ENDURING");
+      }
+      if (elapsedSec >= 90 && !STATE.milestone90) {
+        STATE.milestone90 = true;
+        triggerMilestoneFlash("THRIVING");
+      }
+    }
+
+    // 2e. Record motion trail ghosts
+    if (!this.player.ghosts) this.player.ghosts = [];
+    this.player.ghosts.unshift({
+      x: this.player.x,
+      y: this.player.y,
+      radius: this.player.radius,
+      massScale: this.player.massScale
+    });
+    if (this.player.ghosts.length > 6) {
+      this.player.ghosts.pop();
+    }
+
+    // Threat environmental camera shake
+    if (STATE.isThreatWarning && Math.random() < 0.08) {
+      this.cameras.main.shake(100, 0.0018);
+    }
+
+    // Grazing and Obstacle collision check during transition
+    if (trT > 0 && STATE.chosenPathIndex !== undefined && STATE.paths && STATE.paths[STATE.chosenPathIndex]) {
+      const selectedPath = STATE.paths[STATE.chosenPathIndex];
+      const shiftX = trT * (selectedPath.endX - this.player.x);
+      
+      selectedPath.particles.forEach(nut => {
+        if (nut.consumed) return;
+        
+        let nutPt = this.getBezierPoint(selectedPath, nut.t, shiftX);
+        if (selectedPath.quality === 'worst') {
+          const indexFactor = Math.floor(nut.t * 80);
+          const factor = Math.sin(nut.t * Math.PI);
+          const noiseY = Math.sin(time * 0.018 + indexFactor * 0.6) * 7.5 * factor;
+          const noiseX = Math.cos(time * 0.014 + indexFactor * 0.45) * 3.5 * factor;
+          nutPt.x += noiseX;
+          nutPt.y += noiseY;
+        }
+        
+        const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, nutPt.x, nutPt.y);
+        const baseRad = this.player.radius * this.player.massScale * (STATE.isPlaying ? 1.0 : 3.0);
+        
+        if (dist < baseRad * 0.52) {
+          nut.consumed = true;
+          if (selectedPath.quality === 'best') {
+            audio.playGrazingEat();
+            STATE.repro = Math.min(100, STATE.repro + 0.6);
+            document.getElementById('stat-repro-val').textContent = `${Math.round(STATE.repro)}%`;
+            document.getElementById('bar-repro').style.width = `${STATE.repro}%`;
+            this.spawnChoiceSplash(nutPt.x, nutPt.y, 'best');
+          } else if (selectedPath.quality === 'worst') {
+            audio.playHazardHit();
+            STATE.health = Math.max(5, STATE.health - 2.8);
+            document.getElementById('stat-health-val').textContent = `${Math.round(STATE.health)}%`;
+            document.getElementById('bar-health').style.width = `${STATE.health}%`;
+            this.spawnChoiceSplash(nutPt.x, nutPt.y, 'worst');
+            STATE_CONTROLLER.checkDDAEffects();
+          }
+        }
+      });
+    }
+    
+    if (this.player.rippleTime > 0) {
+      this.player.rippleTime -= delta;
+      if (this.player.rippleTime < 0) this.player.rippleTime = 0;
+    }
+
+    this.absorptionParticles.forEach(p => {
+      p.endX = this.player.x;
+      p.endY = this.player.y;
+      p.update(delta);
+    });
+    this.absorptionParticles = this.absorptionParticles.filter(p => p.time < p.duration);
+
     this.player.massScale = 0.95 + (STATE.repro / 100) * 0.35;
     this.membranePoints.forEach(pt => pt.update(this.player.massScale, delta));
     
@@ -350,8 +693,9 @@ export default class GameScene extends Phaser.Scene {
       this.player.tail.pop();
     }
     
-    // Update ambient currents
+    // Update ambient currents and macroStructures
     this.currents.forEach(c => c.update(width, height, STATE.currentSpeed * 0.8, delta));
+    this.macroStructures.forEach(m => m.update(STATE.currentSpeed * 0.8, delta));
     
     // Update choice splash particles
     this.particles.forEach(p => p.update(delta));
@@ -372,105 +716,30 @@ export default class GameScene extends Phaser.Scene {
     // Adjust current speed toward target
     STATE.currentSpeed += (STATE.targetSpeed - STATE.currentSpeed) * 0.08 * (delta / 16.6);
     
-    // 2. Render background currents
-    this.currents.forEach(c => c.draw(this.graphics));
+    // 2. Render background macroStructures and deep currents (z > 1.2)
+    this.macroStructures.forEach(m => m.draw(this.graphics));
+    this.currents.forEach(c => {
+      if (c.z > 1.2) {
+        c.draw(this.graphics);
+      }
+    });
     
     // 3. Render paths and nutrients
     if (STATE.isPlaying && STATE.paths && STATE.paths.length > 0) {
+      let trT = 0;
+      if (STATE.isTransitioning && STATE.transitionStart) {
+        const elapsed = Date.now() - STATE.transitionStart;
+        trT = Math.min(1.0, elapsed / 450);
+      }
+
       STATE.paths.forEach(p => {
+        const shiftX = trT * (p.endX - this.player.x);
         const steps = 80;
-        const curvePoints = [];
-        for (let j = 0; j <= steps; j++) {
-          const t = j / steps;
-          curvePoints.push(this.getBezierPoint(p, t));
-        }
-
-        // Draw streams matching the reference image's visual details
-        if (p.quality === 'best') {
-          // Green Path: Wavy green band with soft aura and core dots
-          this.graphics.beginPath();
-          this.graphics.moveTo(curvePoints[0].x, curvePoints[0].y);
-          for (let j = 1; j <= steps; j++) {
-            this.graphics.lineTo(curvePoints[j].x, curvePoints[j].y);
-          }
-          this.graphics.lineStyle(24, 0x2ecc71, 0.08);
-          this.graphics.strokePath();
-          this.graphics.lineStyle(8, 0x2ecc71, 0.20);
-          this.graphics.strokePath();
-          this.graphics.lineStyle(1.8, 0xa3f5c8, 0.75);
-          this.graphics.strokePath();
-
-          // Core glowing micro-dots
-          for (let j = 4; j < steps - 4; j += 3) {
-            const pt = curvePoints[j];
-            const pulse = Math.sin(time * 0.003 + j) * 1.5;
-            this.graphics.fillStyle(0x2ecc71, 0.45 + Math.sin(time * 0.002 + j) * 0.2);
-            this.graphics.fillCircle(pt.x, pt.y + pulse, 1.5 + Math.abs(pulse) * 0.3);
-          }
-        } else if (p.quality === 'ok') {
-          // White Path: Dense stream of glowing white/silver particles
-          for (let j = 0; j <= steps; j += 2) {
-            const pt = curvePoints[j];
-            const spread = Math.sin(time * 0.004 + j) * 2.2;
-            this.graphics.fillStyle(0xffffff, 0.35 + Math.sin(time * 0.003 + j) * 0.25);
-            this.graphics.fillCircle(pt.x, pt.y + spread, 1.2 + Math.abs(spread) * 0.15);
-            
-            // Scattered side-sparks
-            if (j % 8 === 0 && j > 5 && j < steps - 5) {
-              const sideOffset = Math.sin(j * 17) * 8;
-              this.graphics.fillStyle(0xffffff, 0.15);
-              this.graphics.fillCircle(pt.x, pt.y + sideOffset, 0.8);
-            }
-          }
-          // Soft solid core guide
-          this.graphics.lineStyle(1.0, 0xffffff, 0.12);
-          this.graphics.beginPath();
-          this.graphics.moveTo(curvePoints[0].x, curvePoints[0].y);
-          for (let j = 1; j <= steps; j++) {
-            this.graphics.lineTo(curvePoints[j].x, curvePoints[j].y);
-          }
-          this.graphics.strokePath();
-        } else if (p.quality === 'worst') {
-          // Red Path: Jagged, chaotic toxic stream
-          const jaggedPoints = [];
-          for (let j = 0; j <= steps; j++) {
-            const pt = curvePoints[j];
-            const factor = Math.sin((j / steps) * Math.PI);
-            const noiseY = Math.sin(time * 0.018 + j * 0.6) * 7.5 * factor;
-            const noiseX = Math.cos(time * 0.014 + j * 0.45) * 3.5 * factor;
-            jaggedPoints.push({ x: pt.x + noiseX, y: pt.y + noiseY });
-          }
-
-          this.graphics.beginPath();
-          this.graphics.moveTo(jaggedPoints[0].x, jaggedPoints[0].y);
-          for (let j = 1; j <= steps; j++) {
-            this.graphics.lineTo(jaggedPoints[j].x, jaggedPoints[j].y);
-          }
-          this.graphics.lineStyle(16, 0xe74c3c, 0.08);
-          this.graphics.strokePath();
-          this.graphics.lineStyle(6, 0xe74c3c, 0.22);
-          this.graphics.strokePath();
-          this.graphics.lineStyle(1.8, 0xff7a6b, 0.8);
-          this.graphics.strokePath();
-
-          // Red hazardous core particles
-          for (let j = 2; j < steps - 2; j += 4) {
-            const pt = jaggedPoints[j];
-            const pSize = 1.2 + Math.random() * 2.0;
-            this.graphics.fillStyle(0xe74c3c, 0.65);
-            this.graphics.fillCircle(pt.x, pt.y, pSize);
-          }
-        }
-
-        // Draw terminal path node circles
-        const terminalNodeColor = (p.quality === 'worst') ? 0xe74c3c : (p.quality === 'best' ? 0x2ecc71 : 0xffffff);
-        const terminalNodeAlpha = (p.quality === 'worst' && STATE.isThreatWarning) ? 0.95 : 0.25;
-        this.graphics.fillStyle(terminalNodeColor, terminalNodeAlpha);
-        this.graphics.fillCircle(p.endX, p.endY, 6);
         
         // Draw spiked organic proteins floating backward along paths
         p.particles.forEach(nut => {
-          let pt = this.getBezierPoint(p, nut.t);
+          if (nut.consumed) return;
+          let pt = this.getBezierPoint(p, nut.t, shiftX);
           // Incorporate jagged offsets for red stream
           if (p.quality === 'worst') {
             const indexFactor = Math.floor(nut.t * steps);
@@ -486,6 +755,17 @@ export default class GameScene extends Phaser.Scene {
           const radBase = nut.size + pulse;
           
           const drawSpikePath = (scale) => {
+            const drawQuadraticSegment = (x0, y0, cx, cy, x1, y1) => {
+              const segments = 6;
+              for (let step = 1; step <= segments; step++) {
+                const t = step / segments;
+                const mt = 1 - t;
+                const tx = mt * mt * x0 + 2 * mt * t * cx + t * t * x1;
+                const ty = mt * mt * y0 + 2 * mt * t * cy + t * t * y1;
+                this.graphics.lineTo(tx, ty);
+              }
+            };
+
             this.graphics.beginPath();
             const angleStep = (Math.PI * 2) / nut.spikes;
             
@@ -494,6 +774,9 @@ export default class GameScene extends Phaser.Scene {
             const startX = pt.x + Math.cos(startAngle) * startR;
             const startY = pt.y + Math.sin(startAngle) * startR;
             this.graphics.moveTo(startX, startY);
+            
+            let lastX = startX;
+            let lastY = startY;
             
             for (let k = 1; k < nut.spikes; k++) {
               const angle = k * angleStep + rot;
@@ -506,14 +789,16 @@ export default class GameScene extends Phaser.Scene {
               const cx = pt.x + Math.cos(prevAngle) * socketRad;
               const cy = pt.y + Math.sin(prevAngle) * socketRad;
               
-              this.graphics.quadraticCurveTo(cx, cy, px, py);
+              drawQuadraticSegment(lastX, lastY, cx, cy, px, py);
+              lastX = px;
+              lastY = py;
             }
             
             const prevAngle = (nut.spikes - 0.5) * angleStep + rot;
             const socketRad = radBase * 0.45 * scale;
             const cx = pt.x + Math.cos(prevAngle) * socketRad;
             const cy = pt.y + Math.sin(prevAngle) * socketRad;
-            this.graphics.quadraticCurveTo(cx, cy, startX, startY);
+            drawQuadraticSegment(lastX, lastY, cx, cy, startX, startY);
             this.graphics.closePath();
           };
           
@@ -545,6 +830,10 @@ export default class GameScene extends Phaser.Scene {
     
     // 4. Render choice splash particles
     this.particles.forEach(p => p.draw(this.graphics));
+    
+    this.absorptionParticles.forEach(p => {
+      if (p.time >= 0) p.draw(this.graphics);
+    });
     
     // 5. Draw Player Flagella Tail - multiple thin, wavy, bright white threads
     const sizeScale = STATE.isPlaying ? 1.0 : 3.0;
@@ -579,60 +868,137 @@ export default class GameScene extends Phaser.Scene {
     }
     
     // 6. Draw cell membrane layers - glowing white theme
-    const baseRad = this.player.radius * this.player.massScale * sizeScale;
+    const swimCycle = Math.sin(time * 0.012);
+    const swimSquash = 1.0 + swimCycle * 0.05; // squash-and-stretch on X/Y axis
     
-    const drawMembrane = (scale, color, alpha) => {
-      this.graphics.fillStyle(color, alpha);
+    let rippleOffset = 0;
+    let rippleAlphaAdd = 0;
+    if (this.player.rippleTime > 0) {
+      const t = 1.0 - (this.player.rippleTime / this.player.rippleDuration);
+      rippleOffset = 8 * Math.sin(t * Math.PI);
+      rippleAlphaAdd = 0.4 * Math.sin(t * Math.PI);
+    }
+    
+    const baseRad = (this.player.radius + rippleOffset) * this.player.massScale * sizeScale;
+    
+    const drawMembrane = (px, py, scale, color, alpha) => {
+      this.graphics.fillStyle(color, Math.min(1.0, alpha + rippleAlphaAdd));
       this.graphics.beginPath();
       const startOffset = this.membranePoints[0].offset * sizeScale;
       const startAngle = this.membranePoints[0].angle;
-      const sx = this.player.x + (baseRad + startOffset) * Math.cos(startAngle) * scale;
-      const sy = this.player.y + (baseRad + startOffset) * Math.sin(startAngle) * scale;
+      const sx = px + (baseRad + startOffset) * Math.cos(startAngle) * scale * swimSquash;
+      const sy = py + (baseRad + startOffset) * Math.sin(startAngle) * scale * (2.0 - swimSquash);
       this.graphics.moveTo(sx, sy);
       
       for (let i = 1; i < this.membranePoints.length; i++) {
         const pt = this.membranePoints[i];
-        const px = this.player.x + (baseRad + pt.offset * sizeScale) * Math.cos(pt.angle) * scale;
-        const py = this.player.y + (baseRad + pt.offset * sizeScale) * Math.sin(pt.angle) * scale;
-        this.graphics.lineTo(px, py);
+        const gx = px + (baseRad + pt.offset * sizeScale) * Math.cos(pt.angle) * scale * swimSquash;
+        const gy = py + (baseRad + pt.offset * sizeScale) * Math.sin(pt.angle) * scale * (2.0 - swimSquash);
+        this.graphics.lineTo(gx, gy);
       }
       this.graphics.closePath();
       this.graphics.fillPath();
     };
     
-    const strokeMembrane = (lineWidth, color, alpha) => {
-      this.graphics.lineStyle(lineWidth, color, alpha);
+    const strokeMembrane = (px, py, lineWidth, color, alpha) => {
+      this.graphics.lineStyle(lineWidth, color, Math.min(1.0, alpha + rippleAlphaAdd));
       this.graphics.beginPath();
       const startOffset = this.membranePoints[0].offset * sizeScale;
       const startAngle = this.membranePoints[0].angle;
-      const sx = this.player.x + (baseRad + startOffset) * Math.cos(startAngle);
-      const sy = this.player.y + (baseRad + startOffset) * Math.sin(startAngle);
+      const sx = px + (baseRad + startOffset) * Math.cos(startAngle) * swimSquash;
+      const sy = py + (baseRad + startOffset) * Math.sin(startAngle) * (2.0 - swimSquash);
       this.graphics.moveTo(sx, sy);
       
       for (let i = 1; i < this.membranePoints.length; i++) {
         const pt = this.membranePoints[i];
-        const px = this.player.x + (baseRad + pt.offset * sizeScale) * Math.cos(pt.angle);
-        const py = this.player.y + (baseRad + pt.offset * sizeScale) * Math.sin(pt.angle);
-        this.graphics.lineTo(px, py);
+        const gx = px + (baseRad + pt.offset * sizeScale) * Math.cos(pt.angle) * swimSquash;
+        const gy = py + (baseRad + pt.offset * sizeScale) * Math.sin(pt.angle) * (2.0 - swimSquash);
+        this.graphics.lineTo(gx, gy);
       }
       this.graphics.closePath();
       this.graphics.strokePath();
     };
+
+    // 2e. Draw ghost motion trails
+    if (this.player.ghosts) {
+      this.player.ghosts.forEach((ghost, idx) => {
+        const ageOpacity = (1 - idx / 6) * 0.12;
+        const gGlowHex = this.player.glowHex || 0x2ec4b6;
+        strokeMembrane(ghost.x, ghost.y, 10 * sizeScale, gGlowHex, ageOpacity * 0.35);
+        strokeMembrane(ghost.x, ghost.y, 2.5 * sizeScale, gGlowHex, ageOpacity * 0.98);
+        
+        this.graphics.beginPath();
+        drawGlowCircle(
+          this.graphics,
+          ghost.x - 2,
+          ghost.y,
+          5 * ghost.massScale * sizeScale,
+          { r: 255, g: 255, b: 255, a: ageOpacity },
+          { r: 138, g: 43, b: 226, a: 0.0 },
+          4
+        );
+      });
+    }
+
+    // Render faint ghost preview cell 60px ahead when reproduction > 75%
+    if (STATE.repro > 75) {
+      const ghostX = this.player.x + 60 * sizeScale;
+      const ghostY = this.player.y;
+      const previewWiggle = Math.sin(time * 0.015) * 2;
+      const previewGlowHex = this.player.glowHex || 0x2ec4b6;
+      strokeMembrane(ghostX, ghostY + previewWiggle, 15 * sizeScale, previewGlowHex, 0.12);
+      drawMembrane(ghostX, ghostY + previewWiggle, 0.9, 0xffffff, 0.05);
+      strokeMembrane(ghostX, ghostY + previewWiggle, 1.5 * sizeScale, previewGlowHex, 0.35);
+      
+      const previewNRad = ((this.scale.width <= 768 ? 4 : 8) + (STATE.survival / 100) * (this.scale.width <= 768 ? 4 : 8)) * this.player.massScale * sizeScale;
+      this.graphics.fillStyle(0xffffff, 0.25);
+      this.graphics.fillCircle(ghostX - 2, ghostY + previewWiggle, previewNRad * 0.7);
+    }
+
+    // 1d. Speed lines at high velocity
+    const cellSpeed = STATE.currentSpeed * 30;
+    if (cellSpeed > 140) {
+      const numStreaks = 6 + Math.floor(Math.random() * 3);
+      const glowColor = this.player.glowHex || 0x00ffdc;
+      for (let i = 0; i < numStreaks; i++) {
+        const yOffset = (Math.random() - 0.5) * baseRad * 1.5;
+        const length = (cellSpeed * 0.4) + Math.random() * 30;
+        const opacity = 0.15 + Math.random() * 0.1;
+        const thickness = 0.5 + Math.random() * 0.5;
+        
+        this.graphics.lineStyle(thickness, glowColor, opacity);
+        this.graphics.beginPath();
+        this.graphics.moveTo(this.player.x - baseRad * 0.8, this.player.y + yOffset);
+        this.graphics.lineTo(this.player.x - baseRad * 0.8 - length, this.player.y + yOffset);
+        this.graphics.strokePath();
+      }
+    }
     
-    // Draw thick organic glowing white aura rings
-    strokeMembrane(40 * sizeScale, 0xffffff, 0.08);
-    strokeMembrane(24 * sizeScale, 0xffffff, 0.16);
-    strokeMembrane(10 * sizeScale, 0xffffff, 0.35);
+    const glowHex = this.player.glowHex || 0x2ec4b6;
+    
+    // Draw thick organic glowing white/colored aura rings
+    strokeMembrane(this.player.x, this.player.y, 40 * sizeScale, glowHex, 0.08);
+    strokeMembrane(this.player.x, this.player.y, 24 * sizeScale, glowHex, 0.16);
+    strokeMembrane(this.player.x, this.player.y, 10 * sizeScale, glowHex, 0.35);
+
+    // Draw expanding ring pulse if active
+    if (this.ringPulseAlpha > 0) {
+      this.graphics.lineStyle(4 * sizeScale, glowHex, this.ringPulseAlpha);
+      this.graphics.strokeCircle(this.player.x, this.player.y, baseRad * (1.0 + this.ringPulseScale));
+      
+      this.graphics.lineStyle(1.5 * sizeScale, 0xffffff, this.ringPulseAlpha * 0.5);
+      this.graphics.strokeCircle(this.player.x, this.player.y, baseRad * (1.0 + this.ringPulseScale) + 6);
+    }
     
     // Multi-layered concentric shades of white/grey inside cell membrane
-    drawMembrane(1.00, 0x050508, 0.95);
-    drawMembrane(0.92, 0xffffff, 0.08);
-    drawMembrane(0.65, 0xffffff, 0.22);
-    drawMembrane(0.20, 0xffffff, 0.65);
-    drawMembrane(0.08, 0xffffff, 0.95);
+    drawMembrane(this.player.x, this.player.y, 1.00, 0x050508, 0.95);
+    drawMembrane(this.player.x, this.player.y, 0.92, 0xffffff, 0.08);
+    drawMembrane(this.player.x, this.player.y, 0.65, 0xffffff, 0.22);
+    drawMembrane(this.player.x, this.player.y, 0.20, 0xffffff, 0.65);
+    drawMembrane(this.player.x, this.player.y, 0.08, 0xffffff, 0.95);
     
     // Sharp cell outline
-    strokeMembrane(2.5 * sizeScale, 0xffffff, 0.98);
+    strokeMembrane(this.player.x, this.player.y, 2.5 * sizeScale, glowHex, 0.98);
     
     // 7. Draw Specular Shine
     this.graphics.beginPath();
@@ -662,49 +1028,21 @@ export default class GameScene extends Phaser.Scene {
       2.8 * this.player.massScale * sizeScale
     );
 
-    // 9. Draw Nucleus (glowing life spark nucleus core)
-    const nPulse = 1.0 + Math.sin(time * 0.004) * 0.08;
-    const nRad = 9 * this.player.massScale * nPulse * sizeScale;
-    
-    this.graphics.beginPath();
-    drawGlowCircle(
-      this.graphics,
-      this.player.x - 2,
-      this.player.y,
-      nRad,
-      { r: 255, g: 255, b: 255, a: 0.98 },
-      { r: 138, g: 43, b: 226, a: 0.0 },
-      6
-    );
-    
-    // Core nucleolus
-    this.graphics.fillStyle(0x0a0a14, 0.92);
-    this.graphics.fillCircle(this.player.x - 3.5, this.player.y - 1, nRad * 0.35);
-
-    // Rotating DNA/Chromosome replication loop rings
-    this.graphics.lineStyle(1.8 * sizeScale, 0xffffff, 0.22);
-    this.graphics.strokeCircle(this.player.x, this.player.y, baseRad * 0.38);
-    
-    this.graphics.lineStyle(1.2 * sizeScale, organelle1Hex, 0.4);
-    this.graphics.strokeEllipse(this.player.x, this.player.y, baseRad * 0.9, baseRad * 0.28);
-
-    // 10. Draw Visual Timer Circle
-    if (STATE.isPlaying && !STATE.isTransitioning) {
-      const timerPct = Math.max(0, STATE.forkTimer / 3.0);
-      this.graphics.beginPath();
-      this.graphics.lineStyle(2.5, STATE.isThreatWarning ? 0xe74c3c : 0xffffff, STATE.isThreatWarning ? 0.55 : 0.25);
-      
-      const startAngle = -Math.PI / 2;
-      const endAngle = (-Math.PI / 2) + (Math.PI * 2 * timerPct);
-      
-      const arcRadius = baseRad + 14;
-      const arcSteps = 30;
-      this.graphics.moveTo(this.player.x + Math.cos(startAngle) * arcRadius, this.player.y + Math.sin(startAngle) * arcRadius);
-      for (let j = 1; j <= arcSteps; j++) {
-        const currAngle = startAngle + (endAngle - startAngle) * (j / arcSteps);
-        this.graphics.lineTo(this.player.x + Math.cos(currAngle) * arcRadius, this.player.y + Math.sin(currAngle) * arcRadius);
-      }
-      this.graphics.strokePath();
+    // 2c. Secondary organelle (appears at repro > 50%)
+    if (this.player.reproOrganelleAlpha > 0) {
+      const pulseSec = Math.sin(time * 0.0035 + 2.5) * 1.0;
+      const secRad = (isMobile ? 2.5 : 4.5) * (1.0 + pulseSec * 0.15) * sizeScale;
+      const offsetX = (isMobile ? 5 : 15) * sizeScale;
+      const offsetY = (isMobile ? -4 : -12) * sizeScale;
+      this.graphics.fillStyle(0xa78bfa, this.player.reproOrganelleAlpha * 0.85);
+      this.graphics.fillCircle(this.player.x + offsetX, this.player.y + offsetY, secRad);
     }
+
+    // 11. Render mid-ground and fore-ground currents (z <= 1.2) on top of the player and paths
+    this.currents.forEach(c => {
+      if (c.z <= 1.2) {
+        c.draw(this.graphics);
+      }
+    });
   }
 }
