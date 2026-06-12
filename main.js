@@ -72,15 +72,6 @@ function bindInputEvents() {
   btnForward.addEventListener('click', () => STATE_CONTROLLER.choosePath(1));
   btnDown.addEventListener('click', () => STATE_CONTROLLER.choosePath(2));
 
-  btnUp.addEventListener('mouseenter', () => { STATE.hoveredPathIndex = 0; });
-  btnUp.addEventListener('mouseleave', () => { if (STATE.hoveredPathIndex === 0) STATE.hoveredPathIndex = null; });
-
-  btnForward.addEventListener('mouseenter', () => { STATE.hoveredPathIndex = 1; });
-  btnForward.addEventListener('mouseleave', () => { if (STATE.hoveredPathIndex === 1) STATE.hoveredPathIndex = null; });
-
-  btnDown.addEventListener('mouseenter', () => { STATE.hoveredPathIndex = 2; });
-  btnDown.addEventListener('mouseleave', () => { if (STATE.hoveredPathIndex === 2) STATE.hoveredPathIndex = null; });
-
   document.getElementById('btn-start').addEventListener('click', () => {
     STATE_CONTROLLER.startGame();
     // Launch/Wake the GameScene inside Phaser
@@ -102,33 +93,14 @@ function bindInputEvents() {
       return;
     }
 
-    if (e.code === 'ArrowUp' || e.code === 'KeyW') {
-      STATE_CONTROLLER.choosePath(0);
-    } else if (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'Space') {
-      STATE_CONTROLLER.choosePath(1);
-    } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
-      STATE_CONTROLLER.choosePath(2);
-    } else if (e.key === '/') {
+    if (e.key === '/') {
       document.getElementById('dev-tweaks').classList.toggle('hidden');
     } else if (e.code === 'Escape') {
       document.getElementById('dev-tweaks').classList.add('hidden');
     }
   });
 
-  // Mobile Touch Swipe Zones
-  const canvasElement = document.getElementById('game-canvas');
-  canvasElement.addEventListener('touchstart', (e) => {
-    if (!STATE.isPlaying || STATE.isTransitioning) return;
-    const touchY = e.touches[0].clientY;
-    const zoneHeight = window.innerHeight / 3;
-    if (touchY < zoneHeight) {
-      STATE_CONTROLLER.choosePath(0);
-    } else if (touchY > zoneHeight * 2) {
-      STATE_CONTROLLER.choosePath(2);
-    } else {
-      STATE_CONTROLLER.choosePath(1);
-    }
-  }, { passive: true });
+  // Mobile Touch Swipe Zones are deprecated as touch pointerdown steering is processed continuously inside GameScene.js
 }
 
 const buttonParticleMap = new Map();

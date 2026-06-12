@@ -11,26 +11,44 @@ export function setupDesignerTweaker() {
   const tRepLbl = document.getElementById('tweak-repro-lbl');
   const tSpdLbl = document.getElementById('tweak-speed-lbl');
   
-  tSurv.addEventListener('input', (e) => {
-    CONFIG.survivalWeight = parseFloat(e.target.value);
-    tSurvLbl.textContent = CONFIG.survivalWeight.toFixed(1);
-  });
+  // Repurposed sliders for vector physics coefficients (ESC dashboard)
+  if (tSurv) {
+    tSurv.min = "0.85"; tSurv.max = "0.99"; tSurv.step = "0.01"; tSurv.value = CONFIG.frictionFactor.toString();
+    tSurvLbl.textContent = CONFIG.frictionFactor.toFixed(2);
+    tSurv.previousSibling.textContent = "Friction Factor: ";
+    tSurv.addEventListener('input', (e) => {
+      CONFIG.frictionFactor = parseFloat(e.target.value);
+      tSurvLbl.textContent = CONFIG.frictionFactor.toFixed(2);
+    });
+  }
   
-  tHlth.addEventListener('input', (e) => {
-    CONFIG.healthWeight = parseFloat(e.target.value);
-    tHlthLbl.textContent = CONFIG.healthWeight.toFixed(1);
-  });
+  if (tHlth) {
+    tHlth.min = "0.5"; tHlth.max = "4.0"; tHlth.step = "0.1"; tHlth.value = CONFIG.propulsionForce.toString();
+    tHlthLbl.textContent = CONFIG.propulsionForce.toFixed(1);
+    tHlth.previousSibling.textContent = "Propulsion Force: ";
+    tHlth.addEventListener('input', (e) => {
+      CONFIG.propulsionForce = parseFloat(e.target.value);
+      tHlthLbl.textContent = CONFIG.propulsionForce.toFixed(1);
+    });
+  }
   
-  tRep.addEventListener('input', (e) => {
-    CONFIG.reproWeight = parseFloat(e.target.value);
-    tRepLbl.textContent = CONFIG.reproWeight.toFixed(1);
-  });
+  if (tRep) {
+    tRep.min = "0.1"; tRep.max = "2.5"; tRep.step = "0.1"; tRep.value = CONFIG.propulsionMassCost.toString();
+    tRepLbl.textContent = CONFIG.propulsionMassCost.toFixed(1);
+    tRep.previousSibling.textContent = "Propulsion Cost: ";
+    tRep.addEventListener('input', (e) => {
+      CONFIG.propulsionMassCost = parseFloat(e.target.value);
+      tRepLbl.textContent = CONFIG.propulsionMassCost.toFixed(1);
+    });
+  }
   
-  tSpd.addEventListener('input', (e) => {
-    CONFIG.flowSpeed = parseFloat(e.target.value);
-    tSpdLbl.textContent = CONFIG.flowSpeed.toFixed(1);
-    STATE.targetSpeed = CONFIG.flowSpeed;
-  });
+  if (tSpd) {
+    tSpd.addEventListener('input', (e) => {
+      CONFIG.flowSpeed = parseFloat(e.target.value);
+      tSpdLbl.textContent = CONFIG.flowSpeed.toFixed(1);
+      STATE.targetSpeed = CONFIG.flowSpeed;
+    });
+  }
   
   document.getElementById('btn-close-tweaks').addEventListener('click', () => {
     document.getElementById('dev-tweaks').classList.add('hidden');

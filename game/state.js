@@ -86,8 +86,18 @@ export const CONFIG = {
   survivalWeight: 1.0,
   healthWeight: 1.0,
   reproWeight: 1.0,
-  flowSpeed: 1.75, // Base scrolling speed (reduced by 50%)
+  flowSpeed: 1.75, // Base scrolling speed
   
+  // Vector Physics parameters (Zero Hardcoding)
+  frictionFactor: 0.94,
+  propulsionForce: 1.6,
+  propulsionMassCost: 0.8,
+  growthScaleExponent: 0.35,
+  minCameraZoom: 0.65,
+  maxCameraZoom: 1.25,
+  sporeMutationInterval: 12000,
+  sporeMutationDuration: 4500,
+
   // Base changes for choice outcomes (modified by weights)
   outcomes: {
     best: { survival: 5, health: 15, repro: 15, speedMultiplier: 1.5 },
@@ -196,7 +206,11 @@ export const STATE = {
   okChoicesCount: 0,
   worstChoicesCount: 0,
   totalChoices: 0,
-  distanceTraveled: 0
+  distanceTraveled: 0,
+
+  // Spore mutations
+  activeMutation: null,
+  mutationExpiration: 0
 };
 
 // Helper to safely obtain the active Phaser GameScene instance
@@ -283,7 +297,8 @@ export const STATE_CONTROLLER = {
   
   activateThreatWarning() {
     STATE.isThreatWarning = true;
-    document.getElementById('threat-indicator').classList.remove('hidden');
+    const el = document.getElementById('threat-indicator');
+    if (el) el.classList.remove('hidden');
     audio.setTempo(330);
     audio.startWarningDrone();
     const scene = getGameScene();
@@ -292,7 +307,8 @@ export const STATE_CONTROLLER = {
   
   deactivateThreatWarning() {
     STATE.isThreatWarning = false;
-    document.getElementById('threat-indicator').classList.add('hidden');
+    const el = document.getElementById('threat-indicator');
+    if (el) el.classList.add('hidden');
     audio.setTempo(1000 / (0.8 + (STATE.health / 100) * 1.2));
     audio.stopWarningDrone();
   },
@@ -474,14 +490,25 @@ export const STATE_CONTROLLER = {
   },
   
   updateHUD() {
-    document.getElementById('stat-survival-val').textContent = `${Math.round(STATE.survival)}%`;
-    document.getElementById('bar-survival').style.width = `${STATE.survival}%`;
+    const survivalBar = document.getElementById('hud-bar-survival');
+    const survivalVal = document.getElementById('hud-val-survival');
+    const healthBar = document.getElementById('hud-bar-health');
+    const healthVal = document.getElementById('hud-val-health');
+    const reproBar = document.getElementById('hud-bar-repro');
+    const reproVal = document.getElementById('hud-val-repro');
     
-    document.getElementById('stat-health-val').textContent = `${Math.round(STATE.health)}%`;
-    document.getElementById('bar-health').style.width = `${STATE.health}%`;
-    
-    document.getElementById('stat-repro-val').textContent = `${Math.round(STATE.repro)}%`;
-    document.getElementById('bar-repro').style.width = `${STATE.repro}%`;
+    if (survivalBar && survivalVal) {
+      survivalBar.style.width = `${STATE.survival}%`;
+      survivalVal.textContent = `${Math.round(STATE.survival)}%`;
+    }
+    if (healthBar && healthVal) {
+      healthBar.style.width = `${STATE.health}%`;
+      healthVal.textContent = `${Math.round(STATE.health)}%`;
+    }
+    if (reproBar && reproVal) {
+      reproBar.style.width = `${STATE.repro}%`;
+      reproVal.textContent = `${Math.round(STATE.repro)}%`;
+    }
   },
   
   triggerChapterComplete() {

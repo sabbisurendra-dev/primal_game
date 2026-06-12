@@ -36,81 +36,80 @@
         </div>
       </header>
 
-      <!-- Left Side HUD: Organic Stats -->
-      <aside class="stats-panel">
-        <div class="stat-group survival">
-          <div class="stat-header">
-            <span class="stat-title">SURVIVAL INSTINCT</span>
-            <span id="stat-survival-val" class="stat-value">100%</span>
-          </div>
-          <div class="bar-outer">
-            <div id="bar-survival" class="bar-inner" style="width: 100%;"></div>
-          </div>
-        </div>
-
-        <div class="stat-group health">
-          <div class="stat-header">
-            <span class="stat-title">HEALTH STATE</span>
-            <span id="stat-health-val" class="stat-value">50%</span>
-          </div>
-          <div class="bar-outer">
-            <div id="bar-health" class="bar-inner" style="width: 50%;"></div>
-          </div>
-        </div>
-
-        <div class="stat-group reproduction">
-          <div class="stat-header">
-            <span class="stat-title">REPRODUCTIVE CAPACITY</span>
-            <span id="stat-repro-val" class="stat-value">10%</span>
-          </div>
-          <div class="bar-outer">
-            <div id="bar-repro" class="bar-inner" style="width: 10%;"></div>
-          </div>
-        </div>
-      </aside>
-
-      <!-- Top-Center Narrative Text (Scientific Evolution Log) -->
       <main class="narrative-panel">
         <div id="narrative-text" class="narrative-content">
           You drift in the cold, abyssal broth. A spark of instinct wakes. You are primitive, nameless, and vulnerable. Find warmth. Avoid the acid.
         </div>
-        <div id="threat-indicator" class="threat-alert hidden">
-          <span class="pulse-red">⚠️ WARNING: ENVIRONMENTAL DISTURBANCE DETECTED</span>
-        </div>
       </main>
 
-      <!-- Bottom Right / Center Choice Buttons -->
-      <nav class="choices-panel">
-        <button id="btn-up" class="btn-choice" aria-label="Branch Up" data-choice="up">
-          <canvas class="btn-particle-canvas"></canvas>
-          <div class="btn-content">
-            <svg viewBox="0 0 24 24" width="24" height="24">
-              <path fill="currentColor" d="M12 4l-8 8h6v8h4v-8h6z"/>
-            </svg>
-            <span class="btn-key-hint">W / ↑</span>
+      <!-- Bottom Left: Health Metrics Panel -->
+      <div id="health-metrics-panel" class="stats-panel glass-panel">
+        <div class="stat-group survival">
+          <div class="stat-header">
+            <span class="stat-title">SURVIVAL INSTINCT</span>
+            <span id="hud-val-survival" class="stat-value">100%</span>
           </div>
-        </button>
+          <div class="bar-outer">
+            <div id="hud-bar-survival" class="bar-inner" style="width: 100%;"></div>
+          </div>
+        </div>
+        
+        <div class="stat-group health">
+          <div class="stat-header">
+            <span class="stat-title">HEALTH STATE</span>
+            <span id="hud-val-health" class="stat-value">50%</span>
+          </div>
+          <div class="bar-outer">
+            <div id="hud-bar-health" class="bar-inner" style="width: 50%;"></div>
+          </div>
+        </div>
+        
+        <div class="stat-group reproduction">
+          <div class="stat-header">
+            <span class="stat-title">REPRODUCTIVE CAPACITY</span>
+            <span id="hud-val-repro" class="stat-value">10%</span>
+          </div>
+          <div class="bar-outer">
+            <div id="hud-bar-repro" class="bar-inner" style="width: 10%;"></div>
+          </div>
+        </div>
+      </div>
 
-        <button id="btn-forward" class="btn-choice" aria-label="Branch Forward" data-choice="forward">
-          <canvas class="btn-particle-canvas"></canvas>
-          <div class="btn-content">
-            <svg viewBox="0 0 24 24" width="24" height="24">
-              <path fill="currentColor" d="M12 4l8 8h-6v8h-4v-8H4z" style="transform: rotate(90deg); transform-origin: 12px 12px;"/>
-            </svg>
-            <span class="btn-key-hint">D / →</span>
-          </div>
-        </button>
-
-        <button id="btn-down" class="btn-choice" aria-label="Branch Down" data-choice="down">
-          <canvas class="btn-particle-canvas"></canvas>
-          <div class="btn-content">
-            <svg viewBox="0 0 24 24" width="24" height="24">
-              <path fill="currentColor" d="M12 20l8-8h-6V4h-4v8H4z"/>
-            </svg>
-            <span class="btn-key-hint">S / ↓</span>
-          </div>
-        </button>
-      </nav>
+      <!-- Bottom Right: Controls Container -->
+      <div class="controls-legend-container">
+        <!-- Choice Navigation Controls (W/S/D or Arrows) -->
+        <nav class="choices-panel">
+          <button id="btn-up" class="btn-choice" aria-label="Branch Up" data-choice="up">
+            <canvas class="btn-particle-canvas"></canvas>
+            <div class="btn-content">
+              <svg viewBox="0 0 24 24" width="24" height="24">
+                <path fill="currentColor" d="M12 4l-8 8h6v8h4v-8h6z"/>
+              </svg>
+              <span class="btn-key-hint">W / ↑</span>
+            </div>
+          </button>
+  
+          <button id="btn-forward" class="btn-choice" aria-label="Branch Forward" data-choice="forward">
+            <canvas class="btn-particle-canvas"></canvas>
+            <div class="btn-content">
+              <svg viewBox="0 0 24 24" width="24" height="24">
+                <path fill="currentColor" d="M12 4l8 8h-6v8h-4v-8H4z" style="transform: rotate(90deg); transform-origin: 12px 12px;"/>
+              </svg>
+              <span class="btn-key-hint">D / →</span>
+            </div>
+          </button>
+  
+          <button id="btn-down" class="btn-choice" aria-label="Branch Down" data-choice="down">
+            <canvas class="btn-particle-canvas"></canvas>
+            <div class="btn-content">
+              <svg viewBox="0 0 24 24" width="24" height="24">
+                <path fill="currentColor" d="M12 20l8-8h-6V4h-4v8H4z"/>
+              </svg>
+              <span class="btn-key-hint">S / ↓</span>
+            </div>
+          </button>
+        </nav>
+      </div>
 
       <!-- Tweaker panel for developer adjustments (Hidden by default, toggleable via '/' key) -->
       <div id="dev-tweaks" class="dev-panel hidden">

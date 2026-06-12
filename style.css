@@ -73,7 +73,6 @@ html, body {
   );
 }
 
-/* Game Canvas Wrapper */
 #game-container {
   position: relative;
   width: 100%;
@@ -81,6 +80,11 @@ html, body {
   display: flex;
   justify-content: center;
   align-items: center;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.85) 100%), url('https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Carina_Nebula_by_ESO.jpg/1280px-Carina_Nebula_by_ESO.jpg');
+  background-size: 130% 130%;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: background-position 0.1s ease-out;
 }
 
 #game-canvas, #game-container canvas {
@@ -102,15 +106,7 @@ html, body {
   height: 100%;
   z-index: 10;
   pointer-events: none; /* Let canvas drag/click work elsewhere if needed */
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  grid-template-rows: 60px 1fr 140px;
-  grid-template-areas:
-    "header header"
-    "stats narrative"
-    "stats choices";
-  padding: 16px;
-  gap: 16px;
+  padding: 24px;
 }
 
 #ui-layer.hidden {
@@ -123,11 +119,15 @@ html, body {
 
 /* Header UI */
 .game-header {
-  grid-area: header;
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 20px;
   background: var(--color-panel-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -177,20 +177,35 @@ html, body {
   transition: width 0.3s ease;
 }
 
+/* Glassmorphism Panel styles */
+.glass-panel {
+  background: rgba(10, 25, 30, 0.65) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 
+              inset 0 0 16px rgba(255, 255, 255, 0.02) !important;
+  transition: all 0.3s ease;
+}
+
+.glass-panel:hover {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 
+              inset 0 0 24px rgba(255, 255, 255, 0.04) !important;
+}
+
 /* Left Stats Panel */
 .stats-panel {
-  grid-area: stats;
-  background: var(--color-panel-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  width: 320px;
   padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 20px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  align-self: start;
 }
 
 .stat-group {
@@ -253,22 +268,22 @@ html, body {
 
 /* Narrative Panel */
 .narrative-panel {
-  grid-area: narrative;
+  position: absolute;
+  top: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(880px, 92%);
   background: var(--color-panel-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  padding: 16px 20px;
+  padding: 10px 20px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  align-self: start;
-  min-height: 80px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  position: relative;
   overflow: hidden;
-  margin-left: 200px;
 }
 
 .narrative-content {
@@ -292,15 +307,77 @@ html, body {
   text-shadow: 0 0 8px rgba(231, 76, 60, 0.6);
 }
 
+/* Bottom Right Controls and Legends Container */
+.controls-legend-container {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+/* Path Legend styling */
+.path-legend-panel {
+  padding: 6px 8px;
+  width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 6px;
+}
+
+.legend-header {
+  font-size: 0.45rem;
+  font-weight: 800;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 1px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-best {
+  background-color: var(--color-accent-green);
+  box-shadow: 0 0 4px var(--color-accent-green);
+}
+
+.dot-ok {
+  background-color: #ffffff;
+  box-shadow: 0 0 4px #ffffff;
+}
+
+.dot-worst {
+  background-color: var(--color-accent-red);
+  box-shadow: 0 0 4px var(--color-accent-red);
+}
+
+.legend-text {
+  font-size: 0.48rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: 0.05em;
+}
+
 /* Choices Panel (Branching Actions) */
 .choices-panel {
-  grid-area: choices;
   display: flex;
   gap: 16px;
   justify-content: flex-end;
   align-items: center;
-  padding-bottom: 8px;
-  margin-left: 200px;
 }
 
 .btn-choice {
@@ -314,8 +391,8 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 96px;
-  height: 96px;
+  width: 160px;
+  height: 160px;
   padding: 0;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -328,14 +405,14 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 10px;
   z-index: 2;
   pointer-events: none;
 }
 
 .btn-key-hint {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: inherit;
   opacity: 0.7;
@@ -360,8 +437,8 @@ html, body {
 }
 
 .btn-choice svg {
-  width: 40px;
-  height: 40px;
+  width: 72px;
+  height: 72px;
   opacity: 0.85;
   z-index: 2;
   transition: all 0.2s ease;
@@ -645,24 +722,38 @@ html, body {
 /* Responsive Scaling for HUD and Layout */
 @media (max-width: 768px) {
   #ui-layer {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr auto;
-    grid-template-areas:
-      "header"
-      "narrative"
-      "stats"
-      "choices";
-    padding: 10px;
-    gap: 10px;
+    padding: 12px;
+  }
+
+  .game-header {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+  }
+
+  .narrative-panel {
+    top: 76px;
+    left: 8px;
+    width: calc(100% - 16px);
+    transform: none;
+    min-height: 60px;
+    padding: 10px 14px;
   }
   
-  .stats-panel {
-    align-self: center;
-    width: 100%;
-    padding: 12px;
+  .narrative-content {
+    font-size: 0.75rem;
+  }
+
+  #health-metrics-panel {
+    position: absolute;
+    top: 154px;
+    left: 8px;
+    bottom: auto;
+    width: calc(100% - 16px);
     flex-direction: row;
     justify-content: space-between;
     gap: 8px;
+    padding: 10px;
   }
   
   .stat-group {
@@ -681,23 +772,25 @@ html, body {
   .bar-outer {
     height: 6px;
   }
-  
-  .narrative-panel {
-    min-height: 60px;
-    padding: 10px 14px;
-    margin-left: 0;
+
+  .controls-legend-container {
+    bottom: 12px;
+    right: 8px;
+    left: 8px;
+    width: calc(100% - 16px);
+    align-items: center;
+    gap: 8px;
   }
-  
-  .narrative-content {
-    font-size: 0.75rem;
+
+  .path-legend-panel {
+    width: 100%;
+    padding: 8px 12px;
   }
-  
+
   .choices-panel {
     justify-content: center;
     width: 100%;
     gap: 12px;
-    padding-bottom: 12px;
-    margin-left: 0;
   }
   
   .btn-choice {
@@ -714,7 +807,7 @@ html, body {
   }
 
   .btn-key-hint {
-    font-size: 0.55rem;
+    font-size: 0.65rem;
   }
   
   .logo {

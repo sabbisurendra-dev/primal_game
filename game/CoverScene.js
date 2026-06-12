@@ -145,6 +145,13 @@ export default class CoverScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
     const pointer = this.input.activePointer;
+
+    // Fill background with black first — matches gameplay
+    this.graphics.fillStyle(0x000000, 1.0);
+    this.graphics.fillRect(0, 0, width, height);
+
+    // Draw large organic cell-wall membrane blobs (left and right sides)
+    this.drawOrganicMembraneBlobs(time);
     
     // Update background macro-structures
     this.macroStructures.forEach(m => m.update(width, height, delta));
@@ -154,9 +161,10 @@ export default class CoverScene extends Phaser.Scene {
       c.update(width, height, 0.05, delta);
     });
     
-    const txBase = width <= 768 ? width * 0.3 : 400;
+    const isMobile = width <= 768;
+    const txBase = isMobile ? width * 0.16 : 180;
     const tyBase = height / 2;
-    const radius = width <= 768 ? 45 : 78;
+    const radius = isMobile ? 45 : 78;
 
     // Soul / Frozen core coordinates with medium depth z = 1.0
     const tx = txBase + (pointer ? (pointer.x - width / 2) * 0.08 : 0);
@@ -332,5 +340,192 @@ export default class CoverScene extends Phaser.Scene {
     this.graphics.fillCircle(tx - baseRad * 0.3, ty - baseRad * 0.3, baseRad * 0.16);
     
     // Dormant player cell rendering ends here (nucleus and rotating loops removed)
+  }
+
+  drawOrganicMembraneBlobs(time) {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const minDim = Math.min(width, height);
+
+    // ==================== RIGHT SIDE WALLS ====================
+    // ---------- LAYER 1: Largest dark blob — occupies top-right quadrant ----------
+    const b1CX = width * 0.82;
+    const b1CY = height * 0.28;
+    const b1R  = minDim * 0.42;
+    const b1Points = [];
+    const bSteps = 28;
+    for (let i = 0; i <= bSteps; i++) {
+      const t = i / bSteps;
+      const baseAngle = t * Math.PI * 2;
+      const deform =
+        Math.sin(baseAngle * 2.3 + time * 0.00018) * (b1R * 0.18) +
+        Math.sin(baseAngle * 3.7 + time * 0.00012) * (b1R * 0.09) +
+        Math.cos(baseAngle * 1.6 + time * 0.00025) * (b1R * 0.12);
+      const r = b1R + deform;
+      b1Points.push({ x: b1CX + Math.cos(baseAngle) * r, y: b1CY + Math.sin(baseAngle) * r });
+    }
+    this.graphics.fillStyle(0x181818, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b1Points[0].x, b1Points[0].y);
+    for (let i = 1; i < b1Points.length; i++) this.graphics.lineTo(b1Points[i].x, b1Points[i].y);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    // Subtle inner highlight
+    this.graphics.fillStyle(0x272727, 0.55);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b1Points[0].x, b1Points[0].y);
+    for (let i = 1; i < b1Points.length; i++) this.graphics.lineTo(b1Points[i].x - b1R * 0.08, b1Points[i].y - b1R * 0.06);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    // Rim highlight
+    this.graphics.lineStyle(2.5, 0x4a4a4a, 0.45);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b1Points[0].x, b1Points[0].y);
+    for (let i = 1; i < b1Points.length; i++) this.graphics.lineTo(b1Points[i].x, b1Points[i].y);
+    this.graphics.closePath();
+    this.graphics.strokePath();
+
+    // ---------- LAYER 2: Second organic blob — smaller, overlapping at upper right ----------
+    const b2CX = width * 0.72;
+    const b2CY = height * 0.12;
+    const b2R  = minDim * 0.22;
+    const b2Points = [];
+    for (let i = 0; i <= bSteps; i++) {
+      const t = i / bSteps;
+      const baseAngle = t * Math.PI * 2;
+      const deform =
+        Math.cos(baseAngle * 2.1 + time * 0.00022) * (b2R * 0.22) +
+        Math.sin(baseAngle * 4.0 + time * 0.00015) * (b2R * 0.10);
+      const r = b2R + deform;
+      b2Points.push({ x: b2CX + Math.cos(baseAngle) * r, y: b2CY + Math.sin(baseAngle) * r });
+    }
+    this.graphics.fillStyle(0x131313, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b2Points[0].x, b2Points[0].y);
+    for (let i = 1; i < b2Points.length; i++) this.graphics.lineTo(b2Points[i].x, b2Points[i].y);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    this.graphics.lineStyle(1.5, 0x383838, 0.55);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b2Points[0].x, b2Points[0].y);
+    for (let i = 1; i < b2Points.length; i++) this.graphics.lineTo(b2Points[i].x, b2Points[i].y);
+    this.graphics.closePath();
+    this.graphics.strokePath();
+
+    // ---------- LAYER 3: A long finger/tendril fold draping down the right side ----------
+    const tendrilPoints = [];
+    const tSteps = 22;
+    for (let i = 0; i <= tSteps; i++) {
+      const t = i / tSteps;
+      const y = height * (-0.05) + t * (height * 1.1);
+      const baseX = width * 0.88;
+      const waver =
+        Math.sin(t * Math.PI * 2.4 + time * 0.00020) * (width * 0.06) +
+        Math.cos(t * Math.PI * 1.1 + time * 0.00014) * (width * 0.03);
+      tendrilPoints.push({ x: baseX + waver, y });
+    }
+    this.graphics.fillStyle(0x0e0e0e, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(tendrilPoints[0].x, tendrilPoints[0].y);
+    for (let i = 1; i < tendrilPoints.length; i++) this.graphics.lineTo(tendrilPoints[i].x, tendrilPoints[i].y);
+    this.graphics.lineTo(width + 60, height * 1.1);
+    this.graphics.lineTo(width + 60, -height * 0.05);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    // Edge glow
+    this.graphics.lineStyle(2, 0x333333, 0.6);
+    this.graphics.beginPath();
+    this.graphics.moveTo(tendrilPoints[0].x, tendrilPoints[0].y);
+    for (let i = 1; i < tendrilPoints.length; i++) this.graphics.lineTo(tendrilPoints[i].x, tendrilPoints[i].y);
+    this.graphics.strokePath();
+
+    // ==================== LEFT SIDE WALLS ====================
+    // ---------- LAYER 4: Large organic blob — occupies top-left quadrant ----------
+    const b3CX = width * 0.05;
+    const b3CY = height * 0.18;
+    const b3R  = minDim * 0.16;
+    const b3Points = [];
+    for (let i = 0; i <= bSteps; i++) {
+      const t = i / bSteps;
+      const baseAngle = t * Math.PI * 2;
+      const deform =
+        Math.sin(baseAngle * 1.9 + time * 0.00016) * (b3R * 0.16) +
+        Math.cos(baseAngle * 3.3 + time * 0.00014) * (b3R * 0.11) +
+        Math.sin(baseAngle * 2.1 + time * 0.00021) * (b3R * 0.07);
+      const r = b3R + deform;
+      b3Points.push({ x: b3CX + Math.cos(baseAngle) * r, y: b3CY + Math.sin(baseAngle) * r });
+    }
+    this.graphics.fillStyle(0x181818, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b3Points[0].x, b3Points[0].y);
+    for (let i = 1; i < b3Points.length; i++) this.graphics.lineTo(b3Points[i].x, b3Points[i].y);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    // Inner volume highlight
+    this.graphics.fillStyle(0x272727, 0.55);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b3Points[0].x, b3Points[0].y);
+    for (let i = 1; i < b3Points.length; i++) this.graphics.lineTo(b3Points[i].x + b3R * 0.08, b3Points[i].y + b3R * 0.06);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    // Rim highlight
+    this.graphics.lineStyle(2.5, 0x4a4a4a, 0.45);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b3Points[0].x, b3Points[0].y);
+    for (let i = 1; i < b3Points.length; i++) this.graphics.lineTo(b3Points[i].x, b3Points[i].y);
+    this.graphics.closePath();
+    this.graphics.strokePath();
+
+    // ---------- LAYER 5: Second organic blob — bottom-left quadrant ----------
+    const b4CX = width * 0.03;
+    const b4CY = height * 0.82;
+    const b4R  = minDim * 0.14;
+    const b4Points = [];
+    for (let i = 0; i <= bSteps; i++) {
+      const t = i / bSteps;
+      const baseAngle = t * Math.PI * 2;
+      const deform =
+        Math.cos(baseAngle * 2.5 + time * 0.00019) * (b4R * 0.15) +
+        Math.sin(baseAngle * 3.8 + time * 0.00011) * (b4R * 0.08);
+      const r = b4R + deform;
+      b4Points.push({ x: b4CX + Math.cos(baseAngle) * r, y: b4CY + Math.sin(baseAngle) * r });
+    }
+    this.graphics.fillStyle(0x131313, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b4Points[0].x, b4Points[0].y);
+    for (let i = 1; i < b4Points.length; i++) this.graphics.lineTo(b4Points[i].x, b4Points[i].y);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    this.graphics.lineStyle(1.5, 0x383838, 0.55);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b4Points[0].x, b4Points[0].y);
+    for (let i = 1; i < b4Points.length; i++) this.graphics.lineTo(b4Points[i].x, b4Points[i].y);
+    this.graphics.closePath();
+    this.graphics.strokePath();
+
+    // ---------- LAYER 6: Left tendril/fold draping down the left side ----------
+    const leftTendrilPoints = [];
+    for (let i = 0; i <= tSteps; i++) {
+      const t = i / tSteps;
+      const y = height * (-0.05) + t * (height * 1.1);
+      const baseX = width * 0.02;
+      const waver =
+        Math.sin(t * Math.PI * 2.2 - time * 0.00018) * (width * 0.012) +
+        Math.cos(t * Math.PI * 1.3 - time * 0.00012) * (width * 0.006);
+      leftTendrilPoints.push({ x: baseX + waver, y });
+    }
+    this.graphics.fillStyle(0x0e0e0e, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(leftTendrilPoints[0].x, leftTendrilPoints[0].y);
+    for (let i = 1; i < leftTendrilPoints.length; i++) this.graphics.lineTo(leftTendrilPoints[i].x, leftTendrilPoints[i].y);
+    this.graphics.lineTo(-60, height * 1.1);
+    this.graphics.lineTo(-60, -height * 0.05);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    this.graphics.lineStyle(2, 0x333333, 0.6);
+    this.graphics.beginPath();
+    this.graphics.moveTo(leftTendrilPoints[0].x, leftTendrilPoints[0].y);
+    for (let i = 1; i < leftTendrilPoints.length; i++) this.graphics.lineTo(leftTendrilPoints[i].x, leftTendrilPoints[i].y);
+    this.graphics.strokePath();
   }
 }

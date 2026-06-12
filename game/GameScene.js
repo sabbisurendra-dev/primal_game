@@ -224,12 +224,14 @@ export default class GameScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
     const isMobile = width <= 768;
-    const px = isMobile ? width * 0.3 : 400;
+    const px = isMobile ? width * 0.16 : 180;
     
     this.player = {
       x: px,
       y: height / 2,
-      targetY: height / 2,
+      vx: 0,
+      vy: 0,
+      mass: 1.0,
       radius: isMobile ? 45 : 78,
       targetRadius: isMobile ? 45 : 78,
       massScale: 1.0,
@@ -246,9 +248,20 @@ export default class GameScene extends Phaser.Scene {
     
     this.ringPulseScale = 0.0;
     this.ringPulseAlpha = 0.0;
+    this.cameraZoom = 1.0;
+    
+    // Power-up power parameters (Spore Loop)
+    this.lastSporeSpawnTime = 0;
+    this.spores = [];
+    
+    // Viewport shake mechanics
+    this.shakeOffsetX = 0;
+    this.shakeOffsetY = 0;
+    this.shakeDecay = 0;
     
     this.initMembrane();
     this.initCurrents(width, height);
+    this.initSpaceStars(width, height);
     
     // Setup inputs
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -258,19 +271,7 @@ export default class GameScene extends Phaser.Scene {
       d: Phaser.Input.Keyboard.KeyCodes.D
     });
 
-    // Pointer/Touch choice support
-    this.input.on('pointerdown', (pointer) => {
-      if (!STATE.isPlaying || STATE.isTransitioning) return;
-      const touchY = pointer.y;
-      const zoneHeight = this.scale.height / 3;
-      if (touchY < zoneHeight) {
-        STATE_CONTROLLER.choosePath(0);
-      } else if (touchY > zoneHeight * 2) {
-        STATE_CONTROLLER.choosePath(2);
-      } else {
-        STATE_CONTROLLER.choosePath(1);
-      }
-    });
+    // Steering is managed continuously by Phaser input updates in update() method
 
     // Register global renderer hooks so state.js can interact with this scene
     window.renderer = this;
@@ -304,6 +305,22 @@ export default class GameScene extends Phaser.Scene {
       ms.scaleWidth = width;
       ms.scaleHeight = height;
       this.macroStructures.push(ms);
+    }
+  }
+
+  initSpaceStars(width, height) {
+    this.spaceStars = [];
+    const colors = [0xffffff, 0x90e0ef, 0xcaf0f8, 0xffd166, 0xff85a1]; // White, cyan, blue, pale gold, soft pink
+    for (let i = 0; i < 120; i++) {
+      this.spaceStars.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        z: 1.5 + Math.random() * 4.5, // Parallax depth factor
+        size: 0.5 + Math.random() * 1.0,
+        color: colors[i % colors.length],
+        twinkleSpeed: 0.0015 + Math.random() * 0.0025,
+        seed: Math.random() * 100
+      });
     }
   }
 
@@ -344,13 +361,14 @@ export default class GameScene extends Phaser.Scene {
     
     this.player.radius = isMobile ? 45 : 78;
     this.player.targetRadius = isMobile ? 45 : 78;
-    this.player.x = isMobile ? width * 0.3 : 400;
+    this.player.x = isMobile ? width * 0.16 : 180;
     
     const minY = isMobile ? 140 : 190;
     const maxY = height - 120;
     this.player.y = Math.max(minY, Math.min(maxY, this.player.y));
     this.player.targetY = Math.max(minY, Math.min(maxY, this.player.targetY));
     
+    this.initSpaceStars(width, height);
     if (STATE.isPlaying) {
       this.generatePaths();
     }
@@ -374,14 +392,15 @@ export default class GameScene extends Phaser.Scene {
       [qualities[i], qualities[j]] = [qualities[j], qualities[i]];
     }
     
-    const branchDelta = Math.min(220, height * 0.28);
     const isMobile = width <= 768;
     const minY = isMobile ? 140 : 190;
     const maxY = height - 120;
+    const gap = Math.min(210, (maxY - minY) * 0.35);
+    const middleY = Math.max(minY + gap, Math.min(maxY - gap, startY));
     const endYPositions = [
-      Math.max(minY, Math.min(maxY, startY - branchDelta)),
-      Math.max(minY, Math.min(maxY, startY)),
-      Math.max(minY, Math.min(maxY, startY + branchDelta))
+      middleY - gap,
+      middleY,
+      middleY + gap
     ];
     
     STATE.paths = [];
@@ -389,7 +408,7 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < 3; i++) {
       const endY = endYPositions[i];
       const cp1X = startX + (endX - startX) * 0.35;
-      const cp1Y = startY;
+      const cp1Y = startY + (endY - startY) * 0.45;
       const cp2X = startX + (endX - startX) * 0.65;
       const cp2Y = endY;
       
@@ -415,7 +434,7 @@ export default class GameScene extends Phaser.Scene {
 
   generatePathNutrients(x0, y0, cx1, cy1, cx2, cy2, x3, y3, quality) {
     const list = [];
-    const count = 6;
+    const count = 12;
     
     let color = 'rgba(240, 240, 240, ALPHA)';
     if (quality === 'best') color = 'rgba(46, 204, 113, ALPHA)';
@@ -476,25 +495,272 @@ export default class GameScene extends Phaser.Scene {
     this.ringPulseAlpha = 1.0;
   }
 
+  draw3DBackground(time) {
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    // 1. Pitch black base
+    this.graphics.fillStyle(0x000000, 1.0);
+    this.graphics.fillRect(0, 0, width, height);
+
+    // 2. Volumetric Space Nebulae (glowing interstellar gas clouds)
+    // Cloud 1: Deep Indigo Nebula
+    const neb1X = width * 0.3 + Math.sin(time * 0.0003) * 60;
+    const neb1Y = height * 0.4 + Math.cos(time * 0.0002) * 40;
+    const neb1R = Math.min(width, height) * 0.65;
+    for (let j = 0; j < 5; j++) {
+      const radius = neb1R * (1.0 - j * 0.15);
+      const alpha = 0.035 * (1.0 - j * 0.18);
+      this.graphics.fillStyle(0x0a1128, alpha); // Dark Indigo
+      this.graphics.fillCircle(neb1X, neb1Y, radius);
+    }
+
+    // Cloud 2: Deep Violet/Magenta Nebula
+    const neb2X = width * 0.7 + Math.cos(time * 0.00025) * 50;
+    const neb2Y = height * 0.65 + Math.sin(time * 0.00035) * 40;
+    const neb2R = Math.min(width, height) * 0.5;
+    for (let j = 0; j < 5; j++) {
+      const radius = neb2R * (1.0 - j * 0.15);
+      const alpha = 0.025 * (1.0 - j * 0.18);
+      this.graphics.fillStyle(0x1a0826, alpha); // Violet
+      this.graphics.fillCircle(neb2X, neb2Y, radius);
+    }
+
+    // Cloud 3: Deep Cyan/Teal Nebula
+    const neb3X = width * 0.55 + Math.sin(time * 0.0002) * 80;
+    const neb3Y = height * 0.2 + Math.cos(time * 0.0003) * 50;
+    const neb3R = Math.min(width, height) * 0.45;
+    for (let j = 0; j < 4; j++) {
+      const radius = neb3R * (1.0 - j * 0.18);
+      const alpha = 0.02 * (1.0 - j * 0.22);
+      this.graphics.fillStyle(0x03242c, alpha); // Cyan/Teal
+      this.graphics.fillCircle(neb3X, neb3Y, radius);
+    }
+
+    // 3. Draw 3D Space Stars (distant, sharp, twinkling)
+    if (this.spaceStars) {
+      this.spaceStars.forEach(s => {
+        const twinkle = 0.4 + 0.6 * Math.sin(time * s.twinkleSpeed + s.seed);
+        this.graphics.fillStyle(s.color, twinkle * (0.4 + (1 / s.z) * 0.6));
+        this.graphics.fillCircle(s.x, s.y, s.size);
+      });
+    }
+
+    // 4. Draw organic cell-wall membrane blobs in the corners
+    this.drawOrganicMembraneBlobs(time);
+  }
+
+  drawOrganicMembraneBlobs(time) {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const minDim = Math.min(width, height);
+
+    // ==================== RIGHT SIDE WALLS ====================
+    // ---------- LAYER 1: Largest dark blob — occupies top-right quadrant ----------
+    // Slowly drifting amorphous mass, very dark charcoal color
+    const b1CX = width * 0.82;
+    const b1CY = height * 0.28;
+    const b1R  = minDim * 0.42;
+    const b1Points = [];
+    const bSteps = 28;
+    for (let i = 0; i <= bSteps; i++) {
+      const t = i / bSteps;
+      const baseAngle = t * Math.PI * 2;
+      // Compound sinusoidal deformation to get that amoeba-like shape
+      const deform =
+        Math.sin(baseAngle * 2.3 + time * 0.00018) * (b1R * 0.18) +
+        Math.sin(baseAngle * 3.7 + time * 0.00012) * (b1R * 0.09) +
+        Math.cos(baseAngle * 1.6 + time * 0.00025) * (b1R * 0.12);
+      const r = b1R + deform;
+      b1Points.push({ x: b1CX + Math.cos(baseAngle) * r, y: b1CY + Math.sin(baseAngle) * r });
+    }
+    this.graphics.fillStyle(0x181818, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b1Points[0].x, b1Points[0].y);
+    for (let i = 1; i < b1Points.length; i++) this.graphics.lineTo(b1Points[i].x, b1Points[i].y);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    // Subtle inner highlight to give 3D volume
+    this.graphics.fillStyle(0x272727, 0.55);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b1Points[0].x, b1Points[0].y);
+    for (let i = 1; i < b1Points.length; i++) this.graphics.lineTo(b1Points[i].x - b1R * 0.08, b1Points[i].y - b1R * 0.06);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    // Rim highlight edge — thin bright-ish edge like in the reference
+    this.graphics.lineStyle(2.5, 0x4a4a4a, 0.45);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b1Points[0].x, b1Points[0].y);
+    for (let i = 1; i < b1Points.length; i++) this.graphics.lineTo(b1Points[i].x, b1Points[i].y);
+    this.graphics.closePath();
+    this.graphics.strokePath();
+
+    // ---------- LAYER 2: Second organic blob — smaller, overlapping at upper right ----------
+    const b2CX = width * 0.72;
+    const b2CY = height * 0.12;
+    const b2R  = minDim * 0.22;
+    const b2Points = [];
+    for (let i = 0; i <= bSteps; i++) {
+      const t = i / bSteps;
+      const baseAngle = t * Math.PI * 2;
+      const deform =
+        Math.cos(baseAngle * 2.1 + time * 0.00022) * (b2R * 0.22) +
+        Math.sin(baseAngle * 4.0 + time * 0.00015) * (b2R * 0.10);
+      const r = b2R + deform;
+      b2Points.push({ x: b2CX + Math.cos(baseAngle) * r, y: b2CY + Math.sin(baseAngle) * r });
+    }
+    this.graphics.fillStyle(0x131313, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b2Points[0].x, b2Points[0].y);
+    for (let i = 1; i < b2Points.length; i++) this.graphics.lineTo(b2Points[i].x, b2Points[i].y);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    this.graphics.lineStyle(1.5, 0x383838, 0.55);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b2Points[0].x, b2Points[0].y);
+    for (let i = 1; i < b2Points.length; i++) this.graphics.lineTo(b2Points[i].x, b2Points[i].y);
+    this.graphics.closePath();
+    this.graphics.strokePath();
+
+    // ---------- LAYER 3: A long finger/tendril fold draping down the right side ----------
+    const tendrilPoints = [];
+    const tSteps = 22;
+    for (let i = 0; i <= tSteps; i++) {
+      const t = i / tSteps;
+      const y = height * (-0.05) + t * (height * 1.1);
+      const baseX = width * 0.88;
+      const waver =
+        Math.sin(t * Math.PI * 2.4 + time * 0.00020) * (width * 0.06) +
+        Math.cos(t * Math.PI * 1.1 + time * 0.00014) * (width * 0.03);
+      tendrilPoints.push({ x: baseX + waver, y });
+    }
+    this.graphics.fillStyle(0x0e0e0e, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(tendrilPoints[0].x, tendrilPoints[0].y);
+    for (let i = 1; i < tendrilPoints.length; i++) this.graphics.lineTo(tendrilPoints[i].x, tendrilPoints[i].y);
+    this.graphics.lineTo(width + 60, height * 1.1);
+    this.graphics.lineTo(width + 60, -height * 0.05);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    // Edge glow
+    this.graphics.lineStyle(2, 0x333333, 0.6);
+    this.graphics.beginPath();
+    this.graphics.moveTo(tendrilPoints[0].x, tendrilPoints[0].y);
+    for (let i = 1; i < tendrilPoints.length; i++) this.graphics.lineTo(tendrilPoints[i].x, tendrilPoints[i].y);
+    this.graphics.strokePath();
+
+    // ==================== LEFT SIDE WALLS ====================
+    // ---------- LAYER 4: Large organic blob — occupies top-left quadrant ----------
+    const b3CX = width * 0.05;
+    const b3CY = height * 0.18;
+    const b3R  = minDim * 0.16;
+    const b3Points = [];
+    for (let i = 0; i <= bSteps; i++) {
+      const t = i / bSteps;
+      const baseAngle = t * Math.PI * 2;
+      const deform =
+        Math.sin(baseAngle * 1.9 + time * 0.00016) * (b3R * 0.16) +
+        Math.cos(baseAngle * 3.3 + time * 0.00014) * (b3R * 0.11) +
+        Math.sin(baseAngle * 2.1 + time * 0.00021) * (b3R * 0.07);
+      const r = b3R + deform;
+      b3Points.push({ x: b3CX + Math.cos(baseAngle) * r, y: b3CY + Math.sin(baseAngle) * r });
+    }
+    this.graphics.fillStyle(0x181818, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b3Points[0].x, b3Points[0].y);
+    for (let i = 1; i < b3Points.length; i++) this.graphics.lineTo(b3Points[i].x, b3Points[i].y);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    // Inner volume highlight (left-shifted to light source from center)
+    this.graphics.fillStyle(0x272727, 0.55);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b3Points[0].x, b3Points[0].y);
+    for (let i = 1; i < b3Points.length; i++) this.graphics.lineTo(b3Points[i].x + b3R * 0.08, b3Points[i].y + b3R * 0.06);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    // Rim highlight
+    this.graphics.lineStyle(2.5, 0x4a4a4a, 0.45);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b3Points[0].x, b3Points[0].y);
+    for (let i = 1; i < b3Points.length; i++) this.graphics.lineTo(b3Points[i].x, b3Points[i].y);
+    this.graphics.closePath();
+    this.graphics.strokePath();
+
+    // ---------- LAYER 5: Second organic blob — bottom-left quadrant ----------
+    const b4CX = width * 0.03;
+    const b4CY = height * 0.82;
+    const b4R  = minDim * 0.14;
+    const b4Points = [];
+    for (let i = 0; i <= bSteps; i++) {
+      const t = i / bSteps;
+      const baseAngle = t * Math.PI * 2;
+      const deform =
+        Math.cos(baseAngle * 2.5 + time * 0.00019) * (b4R * 0.15) +
+        Math.sin(baseAngle * 3.8 + time * 0.00011) * (b4R * 0.08);
+      const r = b4R + deform;
+      b4Points.push({ x: b4CX + Math.cos(baseAngle) * r, y: b4CY + Math.sin(baseAngle) * r });
+    }
+    this.graphics.fillStyle(0x131313, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b4Points[0].x, b4Points[0].y);
+    for (let i = 1; i < b4Points.length; i++) this.graphics.lineTo(b4Points[i].x, b4Points[i].y);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    this.graphics.lineStyle(1.5, 0x383838, 0.55);
+    this.graphics.beginPath();
+    this.graphics.moveTo(b4Points[0].x, b4Points[0].y);
+    for (let i = 1; i < b4Points.length; i++) this.graphics.lineTo(b4Points[i].x, b4Points[i].y);
+    this.graphics.closePath();
+    this.graphics.strokePath();
+
+    // ---------- LAYER 6: Left tendril/fold draping down the left side ----------
+    const leftTendrilPoints = [];
+    for (let i = 0; i <= tSteps; i++) {
+      const t = i / tSteps;
+      const y = height * (-0.05) + t * (height * 1.1);
+      const baseX = width * 0.02;
+      const waver =
+        Math.sin(t * Math.PI * 2.2 - time * 0.00018) * (width * 0.012) +
+        Math.cos(t * Math.PI * 1.3 - time * 0.00012) * (width * 0.006);
+      leftTendrilPoints.push({ x: baseX + waver, y });
+    }
+    this.graphics.fillStyle(0x0e0e0e, 1.0);
+    this.graphics.beginPath();
+    this.graphics.moveTo(leftTendrilPoints[0].x, leftTendrilPoints[0].y);
+    for (let i = 1; i < leftTendrilPoints.length; i++) this.graphics.lineTo(leftTendrilPoints[i].x, leftTendrilPoints[i].y);
+    this.graphics.lineTo(-60, height * 1.1);
+    this.graphics.lineTo(-60, -height * 0.05);
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    this.graphics.lineStyle(2, 0x333333, 0.6);
+    this.graphics.beginPath();
+    this.graphics.moveTo(leftTendrilPoints[0].x, leftTendrilPoints[0].y);
+    for (let i = 1; i < leftTendrilPoints.length; i++) this.graphics.lineTo(leftTendrilPoints[i].x, leftTendrilPoints[i].y);
+    this.graphics.strokePath();
+  }
+
   update(time, delta) {
     this.graphics.clear();
+    this.draw3DBackground(time);
     
     // Update fork selection timer and check auto-choice / poll inputs
     if (STATE.isPlaying && !STATE.isTransitioning) {
       STATE.distanceTraveled += STATE.currentSpeed * (delta / 1000) * 10;
+      
+      // Tick down choice timer
       STATE.forkTimer -= delta / 1000;
-      if (STATE.forkTimer <= 0) {
-        const fallbackPathIndex = STATE.isThreatWarning ? 
-          STATE.paths.findIndex(p => p.quality === 'best') : 1;
-        STATE_CONTROLLER.choosePath(fallbackPathIndex !== -1 ? fallbackPathIndex : 1, true);
-      } else if (this.cursors && this.keys) {
-        if (this.cursors.up.isDown || this.keys.w.isDown) {
-          STATE_CONTROLLER.choosePath(0);
-        } else if (this.cursors.down.isDown || this.keys.s.isDown) {
-          STATE_CONTROLLER.choosePath(2);
-        } else if (this.cursors.right.isDown || this.keys.d.isDown || this.cursors.space.isDown) {
-          STATE_CONTROLLER.choosePath(1);
-        }
+      if (STATE.forkTimer <= 0 && STATE.paths && STATE.paths.length > 0) {
+        // Auto-select path based on player's vertical proximity to the endY lane
+        let closestPathIndex = 1; // Default to middle
+        let minDist = Infinity;
+        STATE.paths.forEach((p, idx) => {
+          const dist = Math.abs(this.player.y - p.endY);
+          if (dist < minDist) {
+            minDist = dist;
+            closestPathIndex = idx;
+          }
+        });
+        STATE_CONTROLLER.choosePath(closestPathIndex, true);
       }
     }
     
@@ -502,56 +768,117 @@ export default class GameScene extends Phaser.Scene {
     const height = this.scale.height;
     const isMobile = width <= 768;
     
-    // 1. Update Game Physics Entities
-    const targetX = isMobile ? width * 0.3 : 400;
+    // 1. Update Game Physics Entities with Continuous Vector Mechanics
+    this.player.ax = 0;
+    this.player.ay = 0;
     
-    let trT = 0;
-    if (STATE.isTransitioning && STATE.transitionStart) {
-      const elapsed = Date.now() - STATE.transitionStart;
-      trT = Math.min(1.0, elapsed / 450);
-    }
+    const isImmune = STATE.activeMutation === 'immune' && time < STATE.mutationExpiration;
+    const isSpeedy = STATE.activeMutation === 'speed' && time < STATE.mutationExpiration;
     
-    let targetY = STATE.isPlaying ? this.player.targetY : height / 2;
-    if (trT > 0 && STATE.chosenPathIndex !== undefined && STATE.paths && STATE.paths[STATE.chosenPathIndex]) {
-      const selectedPath = STATE.paths[STATE.chosenPathIndex];
-      const pt = this.getBezierPoint(selectedPath, trT);
-      
-      // Real-time steering input (WASD/Arrows or Mouse pointer)
-      const pointer = this.input.activePointer;
-      let keyboardSteer = 0;
+    // Check propulsion input forces (W/S/A/D/Arrows/Space)
+    let appliedThrust = false;
+    let pushDirectionX = 0;
+    let pushDirectionY = 0;
+    
+    if (STATE.isPlaying) {
       if (this.cursors && this.keys) {
         if (this.cursors.up.isDown || this.keys.w.isDown) {
-          keyboardSteer = -2.8;
+          pushDirectionY = -1;
+          appliedThrust = true;
         } else if (this.cursors.down.isDown || this.keys.s.isDown) {
-          keyboardSteer = 2.8;
+          pushDirectionY = 1;
+          appliedThrust = true;
+        }
+        
+        if (this.cursors.left.isDown) {
+          pushDirectionX = -1;
+          appliedThrust = true;
+        } else if (this.cursors.right.isDown || this.keys.d.isDown || this.cursors.space.isDown) {
+          pushDirectionX = 1;
+          appliedThrust = true;
         }
       }
       
-      if (keyboardSteer !== 0) {
-        this.player.steerOffset += keyboardSteer * (delta / 16.6);
-      } else if (pointer && pointer.isDown) {
-        const mouseSteerTarget = Phaser.Math.Clamp(pointer.y - pt.y, -35, 35);
-        this.player.steerOffset += (mouseSteerTarget - this.player.steerOffset) * 0.15 * (delta / 16.6);
-      } else {
-        this.player.steerOffset *= Math.pow(0.88, delta / 16.6);
+      const pointer = this.input.activePointer;
+      if (pointer && pointer.isDown) {
+        const dx = pointer.x - this.player.x;
+        const dy = pointer.y - this.player.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 10) {
+          pushDirectionX = dx / len;
+          pushDirectionY = dy / len;
+          appliedThrust = true;
+        }
       }
-      
-      this.player.steerOffset = Phaser.Math.Clamp(this.player.steerOffset, -35, 35);
-      
-      targetY = pt.y + this.player.steerOffset;
-      this.player.y = pt.y + this.player.steerOffset;
-      this.player.targetY = pt.y + this.player.steerOffset;
-    } else {
-      this.player.steerOffset = 0;
-      this.player.y += (targetY - this.player.y) * 0.08 * (delta / 16.6);
     }
     
-    this.player.x += (targetX - this.player.x) * 0.08 * (delta / 16.6);
-
-    const minY = isMobile ? 140 : 190;
-    const maxY = height - 120;
+    // Apply Propulsion thrust forces and Mass/Radius costs
+    if (appliedThrust) {
+      const scaleExponent = CONFIG.growthScaleExponent;
+      const baseRadius = isMobile ? 45 : 78;
+      this.player.massScale = Math.log(1.0 + this.player.mass) * 1.4;
+      this.player.radius = baseRadius * Math.pow(this.player.massScale, scaleExponent);
+      
+      const currentForce = CONFIG.propulsionForce * (isSpeedy ? 2.0 : 1.0);
+      this.player.ax = pushDirectionX * currentForce * 0.02; // extremely slow horizontal force
+      this.player.ay = pushDirectionY * currentForce;
+      
+      // Expire mass on direction inputs
+      const massCost = CONFIG.propulsionMassCost * (delta / 16.6) * 0.01;
+      this.player.mass = Math.max(0.4, this.player.mass - massCost);
+      
+      // Eject a propulsion micro-particle backwards
+      if (Math.random() < 0.35) {
+        const backAngle = Math.atan2(pushDirectionY, pushDirectionX) + Math.PI + (Math.random() - 0.5) * 0.5;
+        const backSpeed = 4.0 + Math.random() * 3.0;
+        this.particles.push(new Particle(
+          this.player.x - Math.cos(backAngle) * this.player.radius * 0.6,
+          this.player.y - Math.sin(backAngle) * this.player.radius * 0.6,
+          0xffffff,
+          1.5 + Math.random() * 2.0,
+          Math.cos(backAngle) * backSpeed + this.player.vx * 0.3,
+          Math.sin(backAngle) * backSpeed + this.player.vy * 0.3,
+          18 + Math.floor(Math.random() * 10)
+        ));
+      }
+    }
+    
+    // Vector Integration (Kinematics & Viscous Drag Friction)
+    const dt = delta / 16.6;
+    this.player.vx += this.player.ax * dt;
+    this.player.vy += this.player.ay * dt;
+    
+    // Clamp horizontal velocity to 1mm / 3 seconds (approx 0.021 pixels per frame)
+    this.player.vx = Phaser.Math.Clamp(this.player.vx, -0.021, 0.021);
+    
+    this.player.vx *= Math.pow(CONFIG.frictionFactor, dt);
+    this.player.vy *= Math.pow(CONFIG.frictionFactor, dt);
+    this.player.x += this.player.vx * dt;
+    this.player.y += this.player.vy * dt;
+    
+    // Always restore player back towards home X position to keep them mostly static horizontally
+    const homeX = isMobile ? width * 0.16 : 180;
+    this.player.x += (homeX - this.player.x) * 0.003 * dt;
+    
+    // Scroll viewport screen-shake offset decay
+    if (this.shakeDecay > 0) {
+      this.shakeOffsetX = (Math.random() - 0.5) * this.shakeDecay;
+      this.shakeOffsetY = (Math.random() - 0.5) * this.shakeDecay;
+      this.shakeDecay *= Math.pow(0.85, dt);
+      if (this.shakeDecay < 0.2) {
+        this.shakeDecay = 0;
+        this.shakeOffsetX = 0;
+        this.shakeOffsetY = 0;
+      }
+    }
+    
+    // Clamping to screen boundaries
+    const minY = isMobile ? 120 : 150;
+    const maxY = height - 100;
+    const minX = isMobile ? 60 : 100;
+    const maxX = width - 100;
     this.player.y = Phaser.Math.Clamp(this.player.y, minY, maxY);
-    this.player.targetY = Phaser.Math.Clamp(this.player.targetY, minY, maxY);
+    this.player.x = Phaser.Math.Clamp(this.player.x, minX, maxX);
 
     // 2a. Smooth radius scaling based on health
     const targetRadius = (isMobile ? 32 : 56) + (STATE.health / 100) * (isMobile ? 16 : 28);
@@ -631,44 +958,81 @@ export default class GameScene extends Phaser.Scene {
       this.cameras.main.shake(100, 0.0018);
     }
 
-    // Grazing and Obstacle collision check during transition
-    if (trT > 0 && STATE.chosenPathIndex !== undefined && STATE.paths && STATE.paths[STATE.chosenPathIndex]) {
-      const selectedPath = STATE.paths[STATE.chosenPathIndex];
-      const shiftX = trT * (selectedPath.endX - this.player.x);
-      
-      selectedPath.particles.forEach(nut => {
-        if (nut.consumed) return;
-        
-        let nutPt = this.getBezierPoint(selectedPath, nut.t, shiftX);
-        if (selectedPath.quality === 'worst') {
-          const indexFactor = Math.floor(nut.t * 80);
-          const factor = Math.sin(nut.t * Math.PI);
-          const noiseY = Math.sin(time * 0.018 + indexFactor * 0.6) * 7.5 * factor;
-          const noiseX = Math.cos(time * 0.014 + indexFactor * 0.45) * 3.5 * factor;
-          nutPt.x += noiseX;
-          nutPt.y += noiseY;
-        }
-        
-        const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, nutPt.x, nutPt.y);
-        const baseRad = this.player.radius * this.player.massScale * (STATE.isPlaying ? 1.0 : 3.0);
-        
-        if (dist < baseRad * 0.52) {
-          nut.consumed = true;
-          if (selectedPath.quality === 'best') {
-            audio.playGrazingEat();
-            STATE.repro = Math.min(100, STATE.repro + 0.6);
-            document.getElementById('stat-repro-val').textContent = `${Math.round(STATE.repro)}%`;
-            document.getElementById('bar-repro').style.width = `${STATE.repro}%`;
-            this.spawnChoiceSplash(nutPt.x, nutPt.y, 'best');
-          } else if (selectedPath.quality === 'worst') {
-            audio.playHazardHit();
-            STATE.health = Math.max(5, STATE.health - 2.8);
-            document.getElementById('stat-health-val').textContent = `${Math.round(STATE.health)}%`;
-            document.getElementById('bar-health').style.width = `${STATE.health}%`;
-            this.spawnChoiceSplash(nutPt.x, nutPt.y, 'worst');
-            STATE_CONTROLLER.checkDDAEffects();
+    // Elastic Camera Viewport Scaling (based on mass scale)
+    const targetZoom = Phaser.Math.Clamp(
+      1.0 / (this.player.massScale || 1.0),
+      CONFIG.minCameraZoom,
+      CONFIG.maxCameraZoom
+    );
+    this.cameraZoom += (targetZoom - this.cameraZoom) * 0.03 * dt;
+    this.cameras.main.setZoom(this.cameraZoom);
+    
+    // Elastic camera scroll tracking centered on player (with shake offset)
+    const playerOffset = isMobile ? width * 0.16 : 180;
+    const scrollTargetX = this.player.x - playerOffset / this.cameraZoom + this.shakeOffsetX;
+    const scrollTargetY = this.player.y - height / (2 * this.cameraZoom) + this.shakeOffsetY;
+    this.cameras.main.scrollX += (scrollTargetX - this.cameras.main.scrollX) * 0.05 * dt;
+    this.cameras.main.scrollY += (scrollTargetY - this.cameras.main.scrollY) * 0.05 * dt;
+
+    // Grazing and Obstacle collision check during continuous physics path simulation
+    if (STATE.isPlaying && STATE.paths) {
+      STATE.paths.forEach(p => {
+        p.particles.forEach(nut => {
+          if (nut.consumed) return;
+          
+          let nutPt = this.getBezierPoint(p, nut.t);
+          if (p.quality === 'worst') {
+            const indexFactor = Math.floor(nut.t * 80);
+            const factor = Math.sin(nut.t * Math.PI);
+            const noiseY = Math.sin(time * 0.018 + indexFactor * 0.6) * 7.5 * factor;
+            const noiseX = Math.cos(time * 0.014 + indexFactor * 0.45) * 3.5 * factor;
+            nutPt.x += noiseX;
+            nutPt.y += noiseY;
           }
-        }
+          
+          const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, nutPt.x, nutPt.y);
+          const baseRad = this.player.radius * (STATE.isPlaying ? 1.0 : 3.0);
+          
+          if (dist < baseRad * 0.65) {
+            nut.consumed = true;
+            if (p.quality === 'best') {
+              audio.playGrazingEat();
+              
+              // Kinetic Mechanics: Mass increases logarithmically
+              this.player.mass += 0.28;
+              STATE.repro = Math.min(100, STATE.repro + 8);
+              this.spawnChoiceSplash(nutPt.x, nutPt.y, 'best');
+              this.spawnBestPathBurst(this.player.x, this.player.y);
+              this.spawnNutrientAbsorptionTrail();
+            } else if (p.quality === 'worst') {
+              if (!isImmune) {
+                audio.playHazardHit();
+                STATE.health = Math.max(5, STATE.health - 15);
+                this.spawnChoiceSplash(nutPt.x, nutPt.y, 'worst');
+                STATE_CONTROLLER.checkDDAEffects();
+                
+                // Vector-based Screen Shake Matrix oncontact
+                const impactAngle = Math.atan2(this.player.y - nutPt.y, this.player.x - nutPt.x);
+                this.shakeOffsetX = Math.cos(impactAngle) * 25;
+                this.shakeOffsetY = Math.sin(impactAngle) * 25;
+                this.shakeDecay = 18;
+                
+                // Trigger screen vignette alert
+                document.documentElement.style.setProperty('--vignette-scale', '35%');
+                document.documentElement.style.setProperty('--vignette-opacity', '0.90');
+                setTimeout(() => {
+                  STATE_CONTROLLER.checkDDAEffects();
+                }, 400);
+              }
+            } else if (p.quality === 'ok') {
+              audio.playGrazingEat();
+              this.player.mass += 0.12;
+              STATE.repro = Math.min(100, STATE.repro + 4);
+              this.spawnChoiceSplash(nutPt.x, nutPt.y, 'ok');
+            }
+            STATE_CONTROLLER.updateHUD();
+          }
+        });
       });
     }
     
@@ -697,10 +1061,65 @@ export default class GameScene extends Phaser.Scene {
     this.currents.forEach(c => c.update(width, height, STATE.currentSpeed * 0.8, delta));
     this.macroStructures.forEach(m => m.update(STATE.currentSpeed * 0.8, delta));
     
+    // Update space stars (drifting left with parallax)
+    if (STATE.isPlaying && this.spaceStars) {
+      this.spaceStars.forEach(s => {
+        const speedMultiplier = STATE.currentSpeed * 0.4;
+        s.x -= (0.15 + (1 / s.z) * 0.25) * speedMultiplier * (delta / 16.6);
+        if (s.x < -10) {
+          s.x = width + 10;
+          s.y = Math.random() * height;
+        }
+      });
+    }
+    
     // Update choice splash particles
     this.particles.forEach(p => p.update(delta));
     this.particles = this.particles.filter(p => p.life > 0);
     
+    // Random Spore Spawning Loop (Variable Reward Spawning Loop)
+    if (STATE.isPlaying) {
+      if (time - this.lastSporeSpawnTime > CONFIG.sporeMutationInterval) {
+        this.lastSporeSpawnTime = time;
+        const qualities = ['best', 'ok', 'worst'];
+        const chosenPathIdx = Math.floor(Math.random() * 3);
+        const path = STATE.paths[chosenPathIdx];
+        if (path) {
+          // Mutagens spawn at target distance
+          this.spores.push({
+            t: 0.9,
+            pathIndex: chosenPathIdx,
+            type: Math.random() > 0.5 ? 'speed' : 'immune',
+            consumed: false
+          });
+        }
+      }
+      
+      // Update and collect spores
+      this.spores.forEach(spore => {
+        spore.t -= 0.001 * STATE.currentSpeed * dt;
+        if (spore.t <= 0) spore.consumed = true;
+        
+        if (!spore.consumed) {
+          const path = STATE.paths[spore.pathIndex];
+          if (path) {
+            const pt = this.getBezierPoint(path, spore.t);
+            const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, pt.x, pt.y);
+            const baseRad = this.player.radius * (STATE.isPlaying ? 1.0 : 3.0);
+            
+            if (dist < baseRad * 0.7) {
+              spore.consumed = true;
+              STATE.activeMutation = spore.type;
+              STATE.mutationExpiration = Date.now() + CONFIG.sporeMutationDuration;
+              audio.playSelect('best');
+              spawnFloatingTextHTML(spore.type === 'speed' ? "MUTATION: SPEED 2X" : "MUTATION: ACID IMMUNITY", this.player.x, this.player.y - baseRad - 20);
+            }
+          }
+        }
+      });
+      this.spores = this.spores.filter(s => !s.consumed);
+    }
+
     // Update path nutrient positions
     if (STATE.isPlaying && STATE.paths && STATE.paths.length > 0) {
       STATE.paths.forEach(p => {
@@ -708,6 +1127,7 @@ export default class GameScene extends Phaser.Scene {
           nut.t -= 0.00075 * STATE.currentSpeed * (delta / 16.6);
           if (nut.t < 0) {
             nut.t = 1.0;
+            nut.consumed = false; // Reset consumed state so nutrients keep flowing
           }
         });
       });
@@ -735,6 +1155,8 @@ export default class GameScene extends Phaser.Scene {
       STATE.paths.forEach(p => {
         const shiftX = trT * (p.endX - this.player.x);
         const steps = 80;
+        
+        // Pathway lines removed to let the flow of nutrients guide navigation
         
         // Draw spiked organic proteins floating backward along paths
         p.particles.forEach(nut => {
@@ -1037,6 +1459,108 @@ export default class GameScene extends Phaser.Scene {
       this.graphics.fillStyle(0xa78bfa, this.player.reproOrganelleAlpha * 0.85);
       this.graphics.fillCircle(this.player.x + offsetX, this.player.y + offsetY, secRad);
     }
+    
+    // Draw Spore Mutagens
+    this.spores.forEach(spore => {
+      const path = STATE.paths[spore.pathIndex];
+      if (path) {
+        const pt = this.getBezierPoint(path, spore.t);
+        const radius = (isMobile ? 10 : 15) * sizeScale;
+        const color = spore.type === 'speed' ? 0x00ffdc : 0xa78bfa;
+        
+        // Glow
+        this.graphics.lineStyle(3, color, 0.45 * Math.sin(time * 0.01));
+        this.graphics.strokeCircle(pt.x, pt.y, radius * (1.0 + Math.sin(time * 0.008) * 0.25));
+        
+        this.graphics.fillStyle(color, 0.95);
+        this.graphics.fillCircle(pt.x, pt.y, radius * 0.6);
+      }
+    });
+
+    // MEMBRANE-LOCKED UI OVERLAY (Minimalist circumfential health ring, threat arcs, repro core)
+    if (STATE.isPlaying) {
+      // 1. Health State Ring (Circumferential Color-Lerping)
+      const healthPct = STATE.health / 100;
+      const healthColor = healthPct > 0.65 ? 0x2ecc71 : (healthPct > 0.3 ? 0xf39c12 : 0xe74c3c);
+      const ringOpacity = healthPct < 0.3 ? 0.35 + 0.35 * Math.sin(time * 0.02) : 0.8;
+      
+      this.graphics.lineStyle(4 * sizeScale, healthColor, ringOpacity);
+      this.graphics.beginPath();
+      // Draw a circular arc matching health percentage
+      this.graphics.arc(
+        this.player.x,
+        this.player.y,
+        baseRad + 5,
+        -Math.PI / 2,
+        -Math.PI / 2 + (Math.PI * 2 * healthPct),
+        false
+      );
+      this.graphics.strokePath();
+      
+      // 2. Proximity Threat Arcs (point to nearest worst/acid stream segment)
+      if (STATE.paths) {
+        let nearestThreat = null;
+        let minDist = 999999;
+        
+        STATE.paths.forEach(p => {
+          if (p.quality === 'worst') {
+            p.particles.forEach(nut => {
+              if (nut.consumed) return;
+              const pt = this.getBezierPoint(p, nut.t);
+              const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, pt.x, pt.y);
+              if (d < minDist) {
+                minDist = d;
+                nearestThreat = pt;
+              }
+            });
+          }
+        });
+        
+        if (nearestThreat && minDist < 350) {
+          const angleToThreat = Math.atan2(nearestThreat.y - this.player.y, nearestThreat.x - this.player.x);
+          const arcWidth = 0.5; // arc width in radians
+          
+          this.graphics.lineStyle(6 * sizeScale, 0xe74c3c, 0.55 * (1.0 - minDist / 350));
+          this.graphics.beginPath();
+          this.graphics.arc(
+            this.player.x,
+            this.player.y,
+            baseRad + 14,
+            angleToThreat - arcWidth / 2,
+            angleToThreat + arcWidth / 2,
+            false
+          );
+          this.graphics.strokePath();
+        }
+      }
+      
+      // 10. Draw Visual Timer Circle
+      if (STATE.isPlaying && !STATE.isTransitioning) {
+        const timerPct = Math.max(0, STATE.forkTimer / 6.0);
+        this.graphics.beginPath();
+        this.graphics.lineStyle(2.5 * sizeScale, STATE.isThreatWarning ? 0xe74c3c : 0xffffff, STATE.isThreatWarning ? 0.55 : 0.25);
+        
+        const startAngle = -Math.PI / 2;
+        const endAngle = (-Math.PI / 2) + (Math.PI * 2 * timerPct);
+        
+        const arcRadius = baseRad + 14;
+        const arcSteps = 30;
+        this.graphics.moveTo(this.player.x + Math.cos(startAngle) * arcRadius, this.player.y + Math.sin(startAngle) * arcRadius);
+        for (let j = 1; j <= arcSteps; j++) {
+          const currAngle = startAngle + (endAngle - startAngle) * (j / arcSteps);
+          this.graphics.lineTo(this.player.x + Math.cos(currAngle) * arcRadius, this.player.y + Math.sin(currAngle) * arcRadius);
+        }
+        this.graphics.strokePath();
+      }
+      
+      // 3. Reproductive core indicator (pulses inside nucleolus)
+      const reproPct = STATE.repro / 100;
+      const reproPulseSpeed = 0.005 + reproPct * 0.045;
+      const reproPulseSize = baseRad * 0.12 * (1.0 + Math.sin(time * reproPulseSpeed) * 0.28 * reproPct);
+      
+      this.graphics.fillStyle(0xe74c3c, 0.5 + 0.5 * Math.sin(time * reproPulseSpeed));
+      this.graphics.fillCircle(this.player.x, this.player.y, reproPulseSize);
+    }
 
     // 11. Render mid-ground and fore-ground currents (z <= 1.2) on top of the player and paths
     this.currents.forEach(c => {
@@ -1044,5 +1568,13 @@ export default class GameScene extends Phaser.Scene {
         c.draw(this.graphics);
       }
     });
+
+    // Parallax scroll the NASA background on the HTML game-container
+    const container = document.getElementById('game-container');
+    if (container) {
+      const bgX = 50 - (this.cameras.main.scrollX * 0.05);
+      const bgY = 50 - (this.cameras.main.scrollY * 0.05);
+      container.style.backgroundPosition = `${bgX}% ${bgY}%`;
+    }
   }
 }
